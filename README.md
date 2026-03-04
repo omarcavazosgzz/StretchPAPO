@@ -4,7 +4,7 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-<img src="https://github.com/hello-robot/stretch_mujoco/raw/main/docs/images/stretch_mujoco.png" title="Stretch In Kitchen" width="100%">
+<img src="https://github.com/SilentSammy/stretch_mujoco_digital_twin/raw/main/docs/images/stretch_mujoco.png" title="Stretch In Kitchen" width="100%">
 
 This library provides a simulation stack for Stretch, built on [MuJoCo](https://github.com/google-deepmind/mujoco). There is position control for the arm, head, and gripper joints, velocity control for mobile base, calibrated camera RGB + depth imagery, 2D spinning lidar scans, and more. There is a visualizer that supports [user interaction](https://youtu.be/2P-Dt-Jfd6U), or a more efficient headless mode. There is a [ROS2 package](https://github.com/hello-robot/stretch_ros2/tree/humble/stretch_simulation), built on this library, that works with Nav2, Web Teleop, and more. There is 100s of permutations of Robocasa-provided kitchen environments that Stretch can spawn into. The MuJoCo API can be used for features like deformables, procedural model generation, SDF collisions, cloth simulation, and more.
 
@@ -14,7 +14,7 @@ Check out the [highlight reel](https://www.youtube.com/watch?v=SWPJt67IB0Q) for 
 ## Getting Started
 Start with Google Colab:
 
- - Getting Started Tutorial [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hello-robot/stretch_mujoco/blob/main/docs/getting_started.ipynb)
+ - Getting Started Tutorial [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SilentSammy/stretch_mujoco_digital_twin/blob/main/docs/getting_started.ipynb)
 
 **or** follow these instructions on your computer:
 
@@ -23,7 +23,7 @@ First, install [`uv`](https://docs.astral.sh/uv/#getting-started). Uv is a packa
 Then, clone this repo:
 
 ```
-git clone https://github.com/hello-robot/stretch_mujoco --recurse-submodules
+git clone https://github.com/SilentSammy/stretch_mujoco_digital_twin --recurse-submodules
 cd stretch_mujoco
 ```
 
@@ -35,13 +35,16 @@ Lastly, run the simulation:
 uv run launch_sim
 ```
 
-> Note: If you see a build error mentioning `evdev` on linux, please run `sudo apt insall python3-dev`.
+> Note: On Linux, if you see a build error mentioning `evdev` or `gcc`, please run:
+> ```bash
+> sudo apt install build-essential python3-dev linux-headers-$(uname -r)
+> ```
 
 To exit, press `Ctrl+C` in the terminal.
 
 <p>
-    <img src="https://github.com/hello-robot/stretch_mujoco/raw/main/docs/images/camera_streams.png" title="Camera Streams" height="250px">
-    <img src="https://github.com/hello-robot/stretch_mujoco/raw/main/docs/images/stretch3_in_mujoco.png" title="Camera Streams" height="250px">
+    <img src="https://github.com/SilentSammy/stretch_mujoco_digital_twin/raw/main/docs/images/camera_streams.png" title="Camera Streams" height="250px">
+    <img src="https://github.com/SilentSammy/stretch_mujoco_digital_twin/raw/main/docs/images/stretch3_in_mujoco.png" title="Camera Streams" height="250px">
 </p>
 
 > On MacOS, if `mjpython` fails to locate `libpython3.10.dylib` and `libz.1.dylib`, run these commands:
@@ -60,13 +63,13 @@ export DYLD_LIBRARY_PATH=/usr/lib:$DYLD_LIBRARY_PATH
 
 ## Example Scripts
 
-[Keyboard teleop](https://github.com/hello-robot/stretch_mujoco/tree/main/examples/keyboard_teleop.py)
+[Keyboard teleop](https://github.com/SilentSammy/stretch_mujoco_digital_twin/tree/main/examples/keyboard_teleop.py)
 
 ```
 uv run examples/keyboard_teleop.py
 ```
 
-[Gamepad teleop](https://github.com/hello-robot/stretch_mujoco/tree/main/examples/gamepad_teleop.py)
+[Gamepad teleop](https://github.com/SilentSammy/stretch_mujoco_digital_twin/tree/main/examples/gamepad_teleop.py)
 
 Control Stretch in simulation using any xbox type gamepad (uses xinput)
 
@@ -74,7 +77,7 @@ Control Stretch in simulation using any xbox type gamepad (uses xinput)
 uv run examples/gamepad_teleop.py
 ```
 
-[Robocasa environments](https://github.com/hello-robot/stretch_mujoco/tree/main/examples/robocasa_environment.py)
+[Robocasa environments](https://github.com/SilentSammy/stretch_mujoco_digital_twin/tree/main/examples/robocasa_environment.py)
 
 ```
 # Setup
@@ -91,12 +94,12 @@ uv run examples/robocasa_environment.py
 
 Ignore any warnings.
 
-<img src="https://github.com/hello-robot/stretch_mujoco/raw/main/docs/images/robocasa_scene_1.png" title="Camera Streams" width="300px">
-<img src="https://github.com/hello-robot/stretch_mujoco/raw/main/docs/images/robocasa_scene_camera_data.png" title="Camera Streams" width="300px">
+<img src="https://github.com/SilentSammy/stretch_mujoco_digital_twin/raw/main/docs/images/robocasa_scene_1.png" title="Camera Streams" width="300px">
+<img src="https://github.com/SilentSammy/stretch_mujoco_digital_twin/raw/main/docs/images/robocasa_scene_camera_data.png" title="Camera Streams" width="300px">
 
 ## Writing Code
 
-Use the [StretchMujocoSimulator](https://github.com/hello-robot/stretch_mujoco/tree/main/stretch_mujoco/stretch_mujoco.py) class to:
+Use the [StretchMujocoSimulator](https://github.com/SilentSammy/stretch_mujoco_digital_twin/tree/main/stretch_mujoco/stretch_mujoco.py) class to:
 
  * start the simulation
  * position control the robot's ranged joints
@@ -210,7 +213,7 @@ Check out the following documentation resources:
 
 ### Feature Requests and Bug reporting
 
-All enhancements/missing features/bugfixes are tracked by [Issues](https://github.com/hello-robot/stretch_mujoco/issues) filed. Please feel free to file an issue if you would like to report bugs or request a feature addition. Pull requests are welcome! Please see the [contributing guide](./docs/contributing.md).
+All enhancements/missing features/bugfixes are tracked by [Issues](https://github.com/SilentSammy/stretch_mujoco_digital_twin/issues) filed. Please feel free to file an issue if you would like to report bugs or request a feature addition. Pull requests are welcome! Please see the [contributing guide](./docs/contributing.md).
 
 ## Acknowledgment
 
