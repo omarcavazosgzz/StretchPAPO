@@ -321,8 +321,11 @@ def get_absolute_path_stretch_xml(robot_pose_attrib: dict | None = None) -> str:
     with open(default_robot_xml_path, "r") as f:
         default_robot_xml = f.read()
 
+    # Convert Windows backslashes to forward slashes to avoid regex escape issues
+    models_path_escaped = models_path.replace("\\", "/")
+    
     default_robot_xml = re.sub(
-        'assetdir="assets"', f'assetdir="{models_path + "/assets"}"', default_robot_xml
+        'assetdir="assets"', f'assetdir="{models_path_escaped + "/assets"}"', default_robot_xml
     )
 
     # find all the line which has the pattrn {file="something.type"}
@@ -331,7 +334,7 @@ def get_absolute_path_stretch_xml(robot_pose_attrib: dict | None = None) -> str:
     for match in re.finditer(pattern, default_robot_xml):
         file_path = match.group(1)
         default_robot_xml = default_robot_xml.replace(
-            file_path, models_path + "/assets/" + file_path
+            file_path, models_path_escaped + "/assets/" + file_path
         )
 
     if robot_pose_attrib is not None:
@@ -343,10 +346,11 @@ def get_absolute_path_stretch_xml(robot_pose_attrib: dict | None = None) -> str:
         )
 
     # Absosolute path converted streth xml
-    with open(models_path + "/stretch_temp_abs.xml", "w") as f:
+    temp_xml_path = models_path_escaped + "/stretch_temp_abs.xml"
+    with open(temp_xml_path, "w") as f:
         f.write(default_robot_xml)
-    print("Saving temp abs path xml: {}".format(models_path + "/stretch_temp_abs.xml"))
-    return models_path + "/stretch_temp_abs.xml"
+    print("Saving temp abs path xml: {}".format(temp_xml_path))
+    return temp_xml_path
 
 
 def map_between_ranges(
