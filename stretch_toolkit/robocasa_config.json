@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "task": "PnPCounterToCab",
+  "layout": 0,
+  "style": 0,
+  "_comment": "Set enabled to true to load RoboCasa kitchen environment. Task examples: PnPCounterToCab, PnPCounterToSink, PnPSinkToCounter, etc. Layout and style are integer IDs (0-9 typically)."
+}

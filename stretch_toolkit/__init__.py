@@ -80,13 +80,56 @@ if not USE_PHYSICAL:
     _sim = None
     _controller = None
     
+    def _load_robocasa_config():
+        """Load robocasa configuration from JSON file if it exists."""
+        import json
+        from pathlib import Path
+        
+        config_path = Path(__file__).parent / "robocasa_config.json"
+        
+        if not config_path.exists():
+            return None
+        
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            return config if config.get('enabled', False) else None
+        except Exception as e:
+            print(f"[stretch_toolkit] Warning: Failed to load robocasa config: {e}")
+            return None
+    
     def _get_controller():
         global _sim, _controller
         if _controller is None:
-            # Initialize with NO cameras by default (better performance)
-            # Users can explicitly enable cameras if needed
-            # _sim = StretchMujocoSimulator(cameras_to_use=[StretchCameras.cam_d405_rgb, StretchCameras.cam_d405_depth])
-            _sim = StretchMujocoSimulator(cameras_to_use=[])
+            # Check for robocasa environment configuration
+            robocasa_config = _load_robocasa_config()
+            
+            # Prepare simulator initialization kwargs
+            sim_kwargs = {'cameras_to_use': []}  # Keep camera loading separate
+            
+            if robocasa_config:
+                # Generate robocasa model from config parameters
+                try:
+                    from stretch_mujoco.robocasa_gen import model_generation_wizard
+                    
+                    task = robocasa_config.get('task', 'PnPCounterToCab')
+                    layout = robocasa_config.get('layout', 0)
+                    style = robocasa_config.get('style', 0)
+                    
+                    print(f"[stretch_toolkit] Loading RoboCasa environment: {task} (layout={layout}, style={style})")
+                    model, xml, objects_info = model_generation_wizard(
+                        task=task,
+                        layout=layout,
+                        style=style,
+                    )
+                    sim_kwargs['model'] = model  # Pass generated model to simulator
+                    
+                except Exception as e:
+                    print(f"[stretch_toolkit] Warning: Failed to load RoboCasa scene: {e}")
+                    print("[stretch_toolkit] Falling back to default environment")
+            
+            # Initialize simulator (with or without robocasa model)
+            _sim = StretchMujocoSimulator(**sim_kwargs)
             _sim.start()
             _controller = SimulatedJointController(sim=_sim)
             
@@ -94,7 +137,10 @@ if not USE_PHYSICAL:
             from . import sim
             sim._start_watchdog()
             
-            print("[stretch_toolkit] MuJoCo simulation initialized (no cameras for performance)")
+            if robocasa_config:
+                print("[stretch_toolkit] RoboCasa environment initialized")
+            else:
+                print("[stretch_toolkit] MuJoCo simulation initialized (default environment)")
         return _controller
     
     # Create a proxy object that initializes on first use
