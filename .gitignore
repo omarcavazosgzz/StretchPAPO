@@ -25,3 +25,7 @@ stretch_temp_abs.xml
 
 # Activity solutions
 activities/solutions
+
+# Runtime control files
+joint_vels.json
+joint_pos.json
