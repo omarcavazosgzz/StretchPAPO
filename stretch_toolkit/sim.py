@@ -513,7 +513,7 @@ HEAD_CAMERA = DepthCamInfo(
         distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
         distortion_model="brown_conrady"
     ),
-    depth_scale=1e-03
+    depth_scale=1.0
 )
 
 # D405 wrist camera (simulated)
@@ -542,7 +542,7 @@ WRIST_CAMERA = DepthCamInfo(
         distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
         distortion_model="brown_conrady"
     ),
-    depth_scale=1e-04
+    depth_scale=0.1
 )
 
 # OV9782 navigation camera (simulated)
