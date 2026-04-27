@@ -6,16 +6,16 @@
       "lift_up": [ "z", "x", null, "RY" ],
       "arm_out": [ "v", "c", "RX" ],
       "gripper_open": [ "m", "n", "B", "A" ],
-      "wrist_yaw_counterclockwise": [ "l", "j", "RB", "LB" ],
-      "wrist_roll_counterclockwise": [ "u", "o", null, "DPAD_X" ],
-      "wrist_pitch_up": [ "k", "i", null, "DPAD_Y" ]
+      "wrist_yaw_counterclockwise": [ "j", "l", "LB", "RB" ],
+      "wrist_roll_counterclockwise": [ "o", "u", "DPAD_X", null ],
+      "wrist_pitch_up": [ "i", "k", "DPAD_Y", null ]
     },
     "dpad_head_mappings": {
       "wrist_yaw_counterclockwise": [],
       "wrist_roll_counterclockwise": [],
       "wrist_pitch_up": [],
-      "head_pan_counterclockwise": [ "l", "j", "DPAD_X" ],
-      "head_tilt_up": [ "k", "i", null, "DPAD_Y" ]
+      "head_pan_counterclockwise": [ "j", "l", null, "DPAD_X" ],
+      "head_tilt_up": [ "i", "k", "DPAD_Y", null ]
     },
     "toggle_buttons": {
       "head_wrist_toggle": [ "Y", "h" ],
@@ -26,10 +26,10 @@
     "base_mappings": {
       "base_forward": [ "w",  "s", "LY" ],
       "lift_up": [ "z", "x", "RY" ],
-      "wrist_pitch_up": [ "k", "i", null, "DPAD_Y" ]
+      "wrist_pitch_up": [ "i", "k", "DPAD_Y", null ]
     },
     "dpad_head_mappings": {
-      "head_tilt_up": [ "k", "i", null, "DPAD_Y" ]
+      "head_tilt_up": [ "i", "k", "DPAD_Y", null ]
     },
     "toggle_buttons": {
       "head_wrist_toggle": [ "X", "h" ],

@@ -38,7 +38,7 @@ class StateController:
             "arm_out": 5.0,                       # m -> normalized velocity
             "head_pan_counterclockwise": 1.0,     # rad -> normalized velocity
             "head_tilt_up": 1.0,                  # rad -> normalized velocity
-            "gripper_open": 0.25                  # rad -> normalized velocity
+            "gripper_open": 5.0                  # rad -> normalized velocity
         }
         
         # Maximum velocity limits (overrides default 1.0)
@@ -49,14 +49,14 @@ class StateController:
         
         # Position tolerance for each joint
         self.tolerance = {
-            "wrist_roll_counterclockwise": 0.02,  # rad
-            "wrist_pitch_up": 0.02,               # rad
-            "wrist_yaw_counterclockwise": 0.02,   # rad
-            "lift_up": 0.02,                      # m
-            "arm_out": 0.02,                      # m
-            "head_pan_counterclockwise": 0.02,    # rad
-            "head_tilt_up": 0.02,                 # rad
-            "gripper_open": 0.1                   # rad
+            "wrist_roll_counterclockwise": 0.05,  # rad
+            "wrist_pitch_up": 0.05,               # rad
+            "wrist_yaw_counterclockwise": 0.05,   # rad
+            "lift_up": 0.05,                      # m
+            "arm_out": 0.05,                      # m
+            "head_pan_counterclockwise": 0.05,    # rad
+            "head_tilt_up": 0.05,                 # rad
+            "gripper_open": 0.15                  # rad
         }
     
     def get_current_state(self):
@@ -75,7 +75,6 @@ class StateController:
             bool: True if all joints are within tolerance
         """
         current_state = self.get_current_state()
-        
         for joint, desired_pos in self.desired_state.items():
             if joint in current_state:
                 error = abs(current_state[joint] - desired_pos)

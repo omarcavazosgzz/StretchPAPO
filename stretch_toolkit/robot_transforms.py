@@ -112,16 +112,16 @@ class RobotTransforms:
         # State values use user-facing convention (positive = up / counterclockwise).
         # URDF joint angles use the opposite sign for these five joints, so negate them.
         return {
-            "joint_head_pan":   -state.get('head_pan_counterclockwise', 0.0),
-            "joint_head_tilt":  -state.get('head_tilt_up', 0.0),
+            "joint_head_pan":   state.get('head_pan_counterclockwise', 0.0),
+            "joint_head_tilt":  state.get('head_tilt_up', 0.0),
             "joint_lift": state.get('lift_up', 0.0),
             "joint_arm_l0": arm_out / 4,  # Telescoping segments
             "joint_arm_l1": arm_out / 4,
             "joint_arm_l2": arm_out / 4,
             "joint_arm_l3": arm_out / 4,
-            "joint_wrist_yaw":   -state.get('wrist_yaw_counterclockwise', 0.0),
-            "joint_wrist_pitch": -state.get('wrist_pitch_up', 0.0),
-            "joint_wrist_roll":  -state.get('wrist_roll_counterclockwise', 0.0),
+            "joint_wrist_yaw":   state.get('wrist_yaw_counterclockwise', 0.0),
+            "joint_wrist_pitch": state.get('wrist_pitch_up', 0.0),
+            "joint_wrist_roll":  state.get('wrist_roll_counterclockwise', 0.0),
         }
     
     def _urdf_to_legacy_transform(self, urdf_transform):
