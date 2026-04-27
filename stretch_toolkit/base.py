@@ -229,6 +229,9 @@ class DepthCamInfo:
         if depth_image is None:
             depth_image = self.depth_cam.get_frame()
         
+        if depth_image is None or depth_image.size == 0:
+            return None
+
         # Project RGB pixel to depth camera coordinate system
         # 1. Convert RGB pixel to normalized coordinates
         x_norm = (centroid[0] - self.cx) / self.fx
@@ -561,3 +564,31 @@ def merge_proportional(cmd_primary, cmd_secondary, deadband=0.05):
             cmd_final[joint] = (1 - override_strength) * secondary_input + override_strength * desired_value
     
     return cmd_final
+
+def locate_object(centroid, depth_cam_info, robot_transforms, sample_radius=3):
+    """Locate an object in the robot base frame from a pixel centroid.
+
+    Args:
+        centroid: (x, y) pixel coordinates in the RGB frame
+        depth_cam_info: DepthCamInfo instance with intrinsics and depth getter
+        robot_transforms: RobotTransforms instance for the current camera transform
+        sample_radius: Pixel radius for depth sampling around centroid (default: 3)
+
+    Returns:
+        Tuple (obj2cam_T, obj2base_T): both are 4x4 numpy arrays, or (None, None)
+        if no valid depth was found at the centroid.
+    """
+    distance = depth_cam_info.get_depth(centroid, sample_radius=sample_radius)
+    if distance is None:
+        return None, None
+
+    x_norm = (centroid[0] - depth_cam_info.cx) / depth_cam_info.fx
+    y_norm = (centroid[1] - depth_cam_info.cy) / depth_cam_info.fy
+
+    obj2cam_T = np.eye(4)
+    obj2cam_T[0:3, 3] = [distance * x_norm, distance * y_norm, distance]
+
+    cam_T = robot_transforms.get_cam_T(depth_cam_info)
+    obj2base_T = cam_T @ obj2cam_T
+
+    return obj2cam_T, obj2base_T

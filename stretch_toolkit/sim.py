@@ -65,11 +65,11 @@ class SimulatedJointController(JointController):
             'joint_max_speeds': {
                 'lift_up': 0.2,
                 'arm_out': 0.1,
-                'head_tilt_up': -0.5,
-                'head_pan_counterclockwise': -0.5,
-                'wrist_yaw_counterclockwise': -1.0,
-                'wrist_pitch_up': -0.05,
-                'wrist_roll_counterclockwise': -0.25,
+                'head_tilt_up': 0.5,
+                'head_pan_counterclockwise': 0.5,
+                'wrist_yaw_counterclockwise': 1.0,
+                'wrist_pitch_up': 0.05,
+                'wrist_roll_counterclockwise': 0.25,
                 'gripper_open': 0.07,
                 'base_forward': 0.1,
                 'base_counterclockwise': 1.77,
@@ -529,6 +529,7 @@ WRIST_CAMERA = DepthCamInfo(
         ]),
         distortion_coeffs=np.array([-5.52569292e-02, 5.98766357e-02, -8.58005136e-04,
                                      -9.32277253e-05, -1.93387289e-02]),
+        # distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
         distortion_model="inverse_brown_conrady"
     ),
     depth_cam=CamInfo(
@@ -542,7 +543,7 @@ WRIST_CAMERA = DepthCamInfo(
         distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
         distortion_model="brown_conrady"
     ),
-    depth_scale=0.1
+    depth_scale=1.0
 )
 
 # OV9782 navigation camera (simulated)

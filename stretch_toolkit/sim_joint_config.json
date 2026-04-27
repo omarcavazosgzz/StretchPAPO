@@ -2,11 +2,11 @@
   "joint_max_speeds": {
     "lift_up": 0.165,
     "arm_out": 0.1,
-    "head_tilt_up": -1,
-    "head_pan_counterclockwise": -1.1382,
-    "wrist_yaw_counterclockwise": -1.2,
-    "wrist_pitch_up": -0.1,
-    "wrist_roll_counterclockwise": -0.35,
+    "head_tilt_up": 1,
+    "head_pan_counterclockwise": 1.1382,
+    "wrist_yaw_counterclockwise": 1.2,
+    "wrist_pitch_up": 0.1,
+    "wrist_roll_counterclockwise": 0.35,
     "gripper_open": 0.07,
     "base_forward": 0.1,
     "base_counterclockwise": 1.8

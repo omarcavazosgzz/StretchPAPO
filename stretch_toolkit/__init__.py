@@ -37,7 +37,7 @@ else:
 print(f"[stretch_toolkit] Loading {BACKEND_NAME} backend")
 
 # Import base classes (always available)
-from .base import TeleopProvider, JointController, merge_proportional
+from .base import TeleopProvider, JointController, merge_proportional, locate_object
 
 # Import state control
 from .state_control import StateController
@@ -153,6 +153,10 @@ if not USE_PHYSICAL:
     
     print("[stretch_toolkit] Simulation mode ready (lazy init)")
 
+# Import utility modules
+from .robot_transforms import RobotTransforms
+from .object_plotter import ObjectPlotter
+
 # Export public API
 __all__ = [
     'controller',
@@ -161,6 +165,9 @@ __all__ = [
     'JointController',
     'StateController',
     'merge_proportional',
+    'RobotTransforms',
+    'ObjectPlotter',
+    'locate_object',
     'USE_PHYSICAL',
     'BACKEND_NAME',
     'HEAD_CAMERA',

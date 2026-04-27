@@ -1,7 +1,7 @@
 """
 Stretch Toolkit boilerplate — starting point for new scripts.
 """
-from stretch_toolkit import ( controller, teleop, merge_proportional, BACKEND_NAME, HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA, HEAD_RGB_CAMERA, HEAD_DEPTH_CAMERA, WRIST_RGB_CAMERA, WRIST_DEPTH_CAMERA, StateController )
+from stretch_toolkit import ( controller, teleop, merge_proportional, BACKEND_NAME, HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA, HEAD_RGB_CAMERA, HEAD_DEPTH_CAMERA, WRIST_RGB_CAMERA, WRIST_DEPTH_CAMERA, StateController, RobotTransforms, ObjectPlotter )
 import stretch_toolkit.input as inp
 import time
 import cv2
