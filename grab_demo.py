@@ -34,13 +34,13 @@ def main():
         "wrist_roll_counterclockwise": 0.0,
         "wrist_yaw_counterclockwise": 0.0,
         "wrist_pitch_up": 0.0,
-        "gripper_open": 0.5,
+        "gripper_open": 0.3,
         "arm_out": 0.0,
     })
 
     pre_grip_pose = StateController(controller, {
         "wrist_roll_counterclockwise": 0.0,
-        "gripper_open": 0.5,
+        "gripper_open": 0.4,
     })
 
     # --- Tuning constants ---
@@ -169,7 +169,6 @@ def main():
                         auto_velocities["wrist_yaw_counterclockwise"] = Kp_yaw * error_x
                         auto_velocities["wrist_pitch_up"] = -Kp_pitch * error_y
                         cv2.circle(rgb, (cx, cy), 10, (0, 255, 0), -1)
-                        cv2.circle(rgb, (int(frame_cx), int(frame_cy)), 5, (0, 0, 255), 2)
 
                     distance = WRIST_CAMERA.get_depth((cx, cy))
                     if distance is not None:
