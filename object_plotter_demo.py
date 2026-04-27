@@ -14,7 +14,7 @@ LOWER_BLUE = np.array([110, 100, 100])
 UPPER_BLUE = np.array([130, 255, 255])
 
 # Camera selection: "head" or "wrist"
-ACTIVE_CAMERA = "wrist"
+ACTIVE_CAMERA = "head"
 
 if ACTIVE_CAMERA == "head":
     RGB_CAMERA = HEAD_RGB_CAMERA

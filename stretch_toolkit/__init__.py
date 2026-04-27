@@ -85,7 +85,7 @@ if not USE_PHYSICAL:
         import json
         from pathlib import Path
         
-        config_path = Path(__file__).parent / "robocasa_config.json"
+        config_path = Path(__file__).parent / "sim_config.json"
         
         if not config_path.exists():
             return None
@@ -93,9 +93,10 @@ if not USE_PHYSICAL:
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
-            return config if config.get('enabled', False) else None
+            robocasa = config.get('robocasa', {})
+            return robocasa if robocasa.get('enabled', False) else None
         except Exception as e:
-            print(f"[stretch_toolkit] Warning: Failed to load robocasa config: {e}")
+            print(f"[stretch_toolkit] Warning: Failed to load sim config: {e}")
             return None
     
     def _get_controller():
@@ -104,8 +105,24 @@ if not USE_PHYSICAL:
             # Check for robocasa environment configuration
             robocasa_config = _load_robocasa_config()
             
+            # Load full sim config for non-robocasa settings
+            import json
+            from pathlib import Path
+            _config_path = Path(__file__).parent / "sim_config.json"
+            _full_config = {}
+            if _config_path.exists():
+                try:
+                    with open(_config_path, 'r') as _f:
+                        _full_config = json.load(_f)
+                except Exception:
+                    pass
+            
             # Prepare simulator initialization kwargs
             sim_kwargs = {'cameras_to_use': []}  # Keep camera loading separate
+            
+            start_translation = _full_config.get('start_translation', None)
+            if start_translation is not None:
+                sim_kwargs['start_translation'] = start_translation
             
             if robocasa_config:
                 # Generate robocasa model from config parameters
