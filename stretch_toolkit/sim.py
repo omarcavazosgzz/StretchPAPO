@@ -331,160 +331,68 @@ def _mark_camera_accessed(camera):
     _camera_last_access[camera] = time.perf_counter()
 
 
+# Per-camera retry timestamps: if set, don't access camera until this time has passed
+_camera_retry_after = {}
+CAMERA_RETRY_DELAY_S = 1.5  # Must exceed CAMERA_TIMEOUT_MS / 1000 so watchdog fires first
+
+
+def _get_sim_camera_frame(camera_enum):
+    """Get a camera frame with automatic watchdog-reset retry on None frames.
+    
+    When a frame is None (camera failed to open), the camera is released from
+    the watchdog so it gets deregistered, then re-registered after a cooldown.
+    """
+    from . import _sim
+    if _sim is None:
+        return None
+
+    current_time = time.perf_counter()
+
+    # During cooldown: don't access the camera so the watchdog deregisters it
+    retry_after = _camera_retry_after.get(camera_enum)
+    if retry_after is not None:
+        if current_time < retry_after:
+            return None
+        else:
+            del _camera_retry_after[camera_enum]  # Cooldown expired, try again
+
+    # Mark as accessed (keeps watchdog from deregistering a healthy camera)
+    _mark_camera_accessed(camera_enum)
+
+    # Auto-register camera if not already active
+    if camera_enum not in _sim.get_active_cameras():
+        _sim.add_camera(camera_enum)
+
+    try:
+        camera_data = _sim.pull_camera_data()
+        all_frames = camera_data.get_all(use_depth_color_map=False)
+        frame = all_frames.get(camera_enum)
+
+        if frame is None:
+            # Trigger watchdog reset: stamp last_access as ancient so watchdog deregisters it
+            _camera_last_access[camera_enum] = 0
+            _camera_retry_after[camera_enum] = current_time + CAMERA_RETRY_DELAY_S
+
+        return frame
+    except:
+        return None
+
+
 # Frame getter functions for simulation cameras
 def _get_head_rgb_frame():
-    """Get head RGB camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Mark camera as accessed (for watchdog)
-    _mark_camera_accessed(StretchCameras.cam_d435i_rgb)
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d435i_rgb not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d435i_rgb)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        frame = all_frames.get(StretchCameras.cam_d435i_rgb)
-        
-        # If frame is None, camera might not be ready yet - try one more time
-        if frame is None:
-            import time
-            time.sleep(0.05)
-            camera_data = _sim.pull_camera_data()
-            all_frames = camera_data.get_all(use_depth_color_map=False)
-            frame = all_frames.get(StretchCameras.cam_d435i_rgb)
-        
-        return frame
-    except:
-        return None
-
+    return _get_sim_camera_frame(StretchCameras.cam_d435i_rgb)
 
 def _get_head_depth_frame():
-    """Get head depth camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Mark camera as accessed (for watchdog)
-    _mark_camera_accessed(StretchCameras.cam_d435i_depth)
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d435i_depth not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d435i_depth)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        frame = all_frames.get(StretchCameras.cam_d435i_depth)
-        
-        # If frame is None, camera might not be ready yet - try one more time
-        if frame is None:
-            import time
-            time.sleep(0.05)
-            camera_data = _sim.pull_camera_data()
-            all_frames = camera_data.get_all(use_depth_color_map=False)
-            frame = all_frames.get(StretchCameras.cam_d435i_depth)
-        
-        return frame
-    except:
-        return None
-
+    return _get_sim_camera_frame(StretchCameras.cam_d435i_depth)
 
 def _get_wrist_rgb_frame():
-    """Get wrist RGB camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Mark camera as accessed (for watchdog)
-    _mark_camera_accessed(StretchCameras.cam_d405_rgb)
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d405_rgb not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d405_rgb)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        frame = all_frames.get(StretchCameras.cam_d405_rgb)
-        
-        # If frame is None, camera might not be ready yet - try one more time
-        if frame is None:
-            import time
-            time.sleep(0.05)
-            camera_data = _sim.pull_camera_data()
-            all_frames = camera_data.get_all(use_depth_color_map=False)
-            frame = all_frames.get(StretchCameras.cam_d405_rgb)
-        
-        return frame
-    except:
-        return None
-
+    return _get_sim_camera_frame(StretchCameras.cam_d405_rgb)
 
 def _get_wrist_depth_frame():
-    """Get wrist depth camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Mark camera as accessed (for watchdog)
-    _mark_camera_accessed(StretchCameras.cam_d405_depth)
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d405_depth not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d405_depth)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        frame = all_frames.get(StretchCameras.cam_d405_depth)
-        
-        # If frame is None, camera might not be ready yet - try one more time
-        if frame is None:
-            import time
-            time.sleep(0.05)
-            camera_data = _sim.pull_camera_data()
-            all_frames = camera_data.get_all(use_depth_color_map=False)
-            frame = all_frames.get(StretchCameras.cam_d405_depth)
-        
-        return frame
-    except:
-        return None
-
+    return _get_sim_camera_frame(StretchCameras.cam_d405_depth)
 
 def _get_nav_cam_frame():
-    """Get navigation camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Mark camera as accessed (for watchdog)
-    _mark_camera_accessed(StretchCameras.cam_nav_rgb)
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_nav_rgb not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_nav_rgb)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        frame = all_frames.get(StretchCameras.cam_nav_rgb)
-        
-        # If frame is None, camera might not be ready yet - try one more time
-        if frame is None:
-            import time
-            time.sleep(0.05)
-            camera_data = _sim.pull_camera_data()
-            all_frames = camera_data.get_all(use_depth_color_map=False)
-            frame = all_frames.get(StretchCameras.cam_nav_rgb)
-        
-        return frame
-    except:
-        return None
+    return _get_sim_camera_frame(StretchCameras.cam_nav_rgb)
 
 
 # Camera instances for simulated robot

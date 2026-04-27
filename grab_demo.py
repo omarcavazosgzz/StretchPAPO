@@ -1,7 +1,7 @@
 """
 Practice 4 Part 3 - Wrist camera visual servoing with 3D object localization.
 """
-from stretch_toolkit import ( controller, teleop, merge_proportional, locate_object, BACKEND_NAME, WRIST_CAMERA, WRIST_RGB_CAMERA, StateController )
+from stretch_toolkit import ( controller, teleop, merge_proportional, locate_object, BACKEND_NAME, HEAD_CAMERA, HEAD_RGB_CAMERA, WRIST_CAMERA, WRIST_RGB_CAMERA, StateController )
 from stretch_toolkit.robot_transforms import RobotTransforms
 import time
 import math
@@ -38,6 +38,81 @@ def find_blue_object(rgb_frame):
     return None
 
 
+def approach_phase(transforms, stow_pose):
+    """Approach object using head camera; present right flank at ~50cm, then hand off."""
+    Kp_pan           = 1.0
+    Kp_tilt          = 1.0
+    Kp_angle         = 5.0 / math.pi
+    Kp_forward       = 2.0
+    TARGET_ANGLE_FLANK = -math.pi / 2
+    FLANK_THRESHOLD  = math.radians(5)
+
+    in_zone = False
+
+    print("Phase 0: approaching...")
+    while True:
+        velocities = teleop.get_normalized_velocities()
+
+        rgb = HEAD_RGB_CAMERA.get_frame()
+        centroid = find_blue_object(rgb)
+        print(f"\r[approach] Head RGB: {'OK ' + str(rgb.shape) if rgb is not None else 'None'}  Centroid: {centroid}   ", end="", flush=True)
+
+        if centroid is not None and rgb is not None:
+            cx, cy = centroid
+            frame_cx = rgb.shape[1] / 2
+            frame_cy = rgb.shape[0] / 2
+
+            error_x = (cx - frame_cx) / rgb.shape[1]
+            error_y = (cy - frame_cy) / rgb.shape[0]
+
+            auto_velocities = {
+                "head_pan_counterclockwise": -Kp_pan * error_x,
+                "head_tilt_up": -Kp_tilt * error_y,
+            }
+
+            _, obj2base_T = locate_object((cx, cy), HEAD_CAMERA, transforms)
+            if obj2base_T is not None:
+                x, y, z = obj2base_T[0:3, 3]
+                angle_z = math.atan2(y, x)
+                horizontal_distance = math.sqrt(x**2 + y**2)
+
+                if not in_zone:
+                    if 0.45 <= horizontal_distance <= 0.55:
+                        in_zone = True
+                else:
+                    if horizontal_distance < 0.4 or horizontal_distance > 0.6:
+                        in_zone = False
+
+                if in_zone:
+                    angle_error = TARGET_ANGLE_FLANK - angle_z
+                    auto_velocities["base_counterclockwise"] = Kp_angle * angle_error
+                    auto_velocities["base_forward"] = 0.0
+                    print(f"\rDist: {horizontal_distance:.2f}m  Angle Err: {math.degrees(angle_error):+6.1f}°  [FLANK]   ", end="", flush=True)
+                    if abs(angle_error) < FLANK_THRESHOLD:
+                        print("\nPhase 0 complete.")
+                        cv2.destroyWindow("Head RGB")
+                        return
+                else:
+                    auto_velocities["base_counterclockwise"] = -Kp_angle * angle_z
+                    alignment = 1.0 - (abs(angle_z) / math.pi)
+                    travel_auth = max(0.0, min(1.0, (alignment - 0.9) / 0.1))
+                    auto_velocities["base_forward"] = Kp_forward * horizontal_distance * travel_auth
+                    print(f"\rDist: {horizontal_distance:.2f}m  Align: {alignment:.3f}  Auth: {travel_auth:.2f}  [moving]   ", end="", flush=True)
+
+            velocities = merge_proportional(velocities, auto_velocities)
+
+            cv2.circle(rgb, (cx, cy), 10, (0, 255, 0), -1)
+            cv2.circle(rgb, (int(frame_cx), int(frame_cy)), 5, (0, 0, 255), 2)
+
+        if rgb is not None:
+            cv2.imshow("Head RGB", rgb)
+
+        velocities = merge_proportional(velocities, stow_pose.get_command())
+        controller.set_velocities(velocities)
+        cv2.waitKey(1)
+        time.sleep(1 / 30)
+
+
 def align_phase(transforms, stow_pose):
     """Align base rotation and lift to the object, then return when ready to reach."""
     TARGET_ANGLE     = -math.pi / 2
@@ -52,6 +127,7 @@ def align_phase(transforms, stow_pose):
 
         rgb = WRIST_RGB_CAMERA.get_frame()
         centroid = find_blue_object(rgb)
+        print(f"\r[align] Wrist RGB: {'OK ' + str(rgb.shape) if rgb is not None else 'None'}  Centroid: {centroid}   ", end="", flush=True)
         
         if centroid is not None:
             cx, cy = centroid
@@ -107,6 +183,7 @@ def reach_phase(transforms, pre_grip_pose):
         
         rgb = WRIST_RGB_CAMERA.get_frame()
         centroid = find_blue_object(rgb)
+        print(f"\rWrist RGB: {'OK ' + str(rgb.shape) if rgb is not None else 'None'}  Centroid: {centroid}   ", end="", flush=True)
         
         if centroid is not None:
             cx, cy = centroid
@@ -128,6 +205,7 @@ def reach_phase(transforms, pre_grip_pose):
             
             # Extend arm based on object distance
             distance = WRIST_CAMERA.get_depth((cx, cy))
+            print(f"\rWrist depth: {distance}   ", end="", flush=True)
             if distance is not None:
                 distance_error = distance - TARGET_DISTANCE
                 auto_velocities["arm_out"] = Kp_arm * distance_error
@@ -183,6 +261,7 @@ def main():
     })
 
     try:
+        approach_phase(transforms, stow_pose)
         align_phase(transforms, stow_pose)
         reach_phase(transforms, pre_grip_pose)
         grab_phase()
