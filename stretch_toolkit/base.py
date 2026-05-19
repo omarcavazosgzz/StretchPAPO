@@ -523,6 +523,15 @@ class JointController:
         """
         raise NotImplementedError("Subclasses must implement get_state()")
 
+    def get_lidar_ranges(self):
+        """Get sanitized LiDAR range readings.
+
+        Returns:
+            np.ndarray: Array of distances in metres.  Invalid/no-hit rays are
+            represented as np.inf.  Returns None on error.
+        """
+        raise NotImplementedError("get_lidar_ranges() is not implemented for this backend.")
+
     def stop(self):
         """Stop all robot motion."""
         raise NotImplementedError("Subclasses must implement stop()")

@@ -272,6 +272,31 @@ class SimulatedJointController(JointController):
         """Stop the simulated robot."""
         self.sim.set_base_velocity(0.0, 0.0)
 
+    def get_lidar_ranges(self):
+        """Get sanitized 360-ray LiDAR range readings from the simulator.
+
+        Returns:
+            np.ndarray: 360-element array of distances in metres.
+            Invalid/no-hit rays are np.inf.  Returns None on error.
+        """
+        from stretch_mujoco.enums.stretch_sensors import StretchSensors
+        try:
+            sensor_data = self.sim.pull_sensor_data()
+            ranges = np.asarray(
+                sensor_data.get_data(StretchSensors.base_lidar), dtype=float
+            ).reshape(-1)
+
+            # MuJoCo returns -1 for rays that exceed the cutoff distance.
+            # Also discard NaN and physically impossible near readings.
+            range_min = 0.02   # metres
+            range_max = 10.0   # matches sensor cutoff in stretch.xml
+            invalid = np.isnan(ranges) | (ranges < range_min) | (ranges > range_max)
+            ranges[invalid] = np.inf
+            return ranges
+        except Exception as e:
+            print(f"[LiDAR] Error reading sensor data: {e}")
+            return None
+
 
 # Camera watchdog system - auto-deregister unused cameras
 _camera_last_access = {}  # Track last access time for each camera

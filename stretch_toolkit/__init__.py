@@ -173,6 +173,7 @@ if not USE_PHYSICAL:
 # Import utility modules
 from .robot_transforms import RobotTransforms
 from .object_plotter import ObjectPlotter
+from .lidar_plotter import LidarPlotter
 
 # Export public API
 __all__ = [
@@ -184,6 +185,7 @@ __all__ = [
     'merge_proportional',
     'RobotTransforms',
     'ObjectPlotter',
+    'LidarPlotter',
     'locate_object',
     'USE_PHYSICAL',
     'BACKEND_NAME',
