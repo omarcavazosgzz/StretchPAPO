@@ -37,7 +37,7 @@ else:
 print(f"[stretch_toolkit] Loading {BACKEND_NAME} backend")
 
 # Import base classes (always available)
-from .base import TeleopProvider, JointController, merge_proportional, locate_object
+from .base import TeleopProvider, ObjectControlProvider, JointController, merge_proportional, locate_object
 
 # Import state control
 from .state_control import StateController
@@ -180,6 +180,7 @@ __all__ = [
     'controller',
     'teleop',
     'TeleopProvider',
+    'ObjectControlProvider',
     'JointController',
     'StateController',
     'merge_proportional',

@@ -297,6 +297,89 @@ class SimulatedJointController(JointController):
             print(f"[LiDAR] Error reading sensor data: {e}")
             return None
 
+    def set_object_pose(
+        self,
+        body_name: str,
+        pose: dict,
+    ) -> None:
+        """Teleport a freejoint object to a new world pose.
+
+        Args:
+            body_name: Body name as defined in the scene XML.
+            pose: Dict with keys ``x``, ``y``, ``z`` (metres).
+                  Rotation is optional — supply either
+                  ``qw``/``qx``/``qy``/``qz`` (quaternion) or
+                  ``roll``/``pitch``/``yaw`` (radians, intrinsic ZYX).
+        """
+        self.sim.set_object_pose(body_name, pose)
+
+    def move_object_by(
+        self,
+        body_name: str,
+        delta: dict,
+        z_min: float = 0.45,
+    ) -> None:
+        """Move a freejoint object by a relative offset from its current pose.
+
+        Args:
+            body_name: Body name as defined in the scene XML.
+            delta: Dict with any of: ``x``, ``y``, ``z`` (metres),
+                   ``roll``, ``pitch``, ``yaw`` (radians). Missing keys default to 0.
+                   An empty dict is a no-op.
+            z_min: Minimum allowed z value (floor clamp). Defaults to 0.45 m.
+        """
+        if not delta:
+            return
+        self.sim.move_object_by(body_name, delta, z_min)
+
+    def set_object_gravity(self, body_name: str, enabled: bool | None) -> None:
+        """Enable or disable gravity for a freejoint object.
+
+        Args:
+            body_name: Body name as defined in the scene XML.
+            enabled: True = normal gravity, False = zero gravity (body floats).
+                     None is a no-op.
+        """
+        if enabled is None:
+            return
+        self.sim.set_object_gravity(body_name, enabled)
+
+    def list_scene_objects(self) -> list:
+        """Return names of all freejoint bodies in the active scene XML.
+
+        Parses the scene XML (and any included files) to find bodies that
+        have a <freejoint/> child element.
+
+        Returns:
+            List of body name strings.
+        """
+        import xml.etree.ElementTree as ET
+        from pathlib import Path
+        from stretch_mujoco import utils as mj_utils
+
+        xml_path = Path(self.sim.scene_xml_path or mj_utils.default_scene_xml_path)
+        bodies = []
+
+        def _scan(path: Path):
+            try:
+                tree = ET.parse(path)
+            except Exception:
+                return
+            root = tree.getroot()
+            # Follow <include> tags
+            for include in root.iter('include'):
+                ref = include.get('file', '')
+                _scan(path.parent / ref)
+            # Collect bodies that contain a freejoint
+            for body in root.iter('body'):
+                if body.find('freejoint') is not None:
+                    name = body.get('name')
+                    if name:
+                        bodies.append(name)
+
+        _scan(xml_path)
+        return bodies
+
 
 # Camera watchdog system - auto-deregister unused cameras
 _camera_last_access = {}  # Track last access time for each camera

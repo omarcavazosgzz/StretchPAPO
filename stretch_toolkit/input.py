@@ -201,14 +201,15 @@ if KEYBOARD_AVAILABLE:
 
 # ——————————————————————————————————————————————————————————————
 # Public API (unified for both gamepad and keyboard)
-def is_pressed(input_name):
-    """True as long as the given button/key is held down. Checks gamepad first, then keyboard."""
-    # Check gamepad buttons first
-    if input_name in _pressed_buttons:
-        return True
-    # Fallback to keyboard
-    key_repr = input_name if isinstance(input_name, str) else input_name.char if hasattr(input_name, 'char') else str(input_name)
-    return key_repr in pressed_keys
+def is_pressed(*input_names):
+    """True as long as any of the given buttons/keys are held down. Checks gamepad first, then keyboard."""
+    for input_name in input_names:
+        if input_name in _pressed_buttons:
+            return True
+        key_repr = input_name if isinstance(input_name, str) else input_name.char if hasattr(input_name, 'char') else str(input_name)
+        if key_repr in pressed_keys:
+            return True
+    return False
 
 def is_toggled(input_name):
     """Flip-flop state for each press. Checks gamepad first, then keyboard."""
@@ -221,30 +222,28 @@ def is_toggled(input_name):
         toggles[key_repr] = False
     return toggles.get(key_repr, False)
 
-def rising_edge(input_name):
-    """True exactly once when the button/key first goes down. Checks gamepad first, then keyboard."""
-    # Check gamepad just pressed first
-    if input_name in _just_pressed_buttons:
-        _just_pressed_buttons.remove(input_name)
-        return True
-    # Fallback to keyboard
-    key_repr = input_name if isinstance(input_name, str) else input_name.char if hasattr(input_name, 'char') else str(input_name)
-    if key_repr in just_pressed_keys:
-        just_pressed_keys.remove(key_repr)
-        return True
+def rising_edge(*input_names):
+    """True exactly once when any of the given buttons/keys first goes down. Checks gamepad first, then keyboard."""
+    for input_name in input_names:
+        if input_name in _just_pressed_buttons:
+            _just_pressed_buttons.remove(input_name)
+            return True
+        key_repr = input_name if isinstance(input_name, str) else input_name.char if hasattr(input_name, 'char') else str(input_name)
+        if key_repr in just_pressed_keys:
+            just_pressed_keys.remove(key_repr)
+            return True
     return False
 
-def falling_edge(input_name):
-    """True exactly once when the button/key first goes up. Checks gamepad first, then keyboard."""
-    # Check gamepad just released first
-    if input_name in _just_released_buttons:
-        _just_released_buttons.remove(input_name)
-        return True
-    # Fallback to keyboard
-    key_repr = input_name if isinstance(input_name, str) else input_name.char if hasattr(input_name, 'char') else str(input_name)
-    if key_repr in just_released_keys:
-        just_released_keys.remove(key_repr)
-        return True
+def falling_edge(*input_names):
+    """True exactly once when any of the given buttons/keys first goes up. Checks gamepad first, then keyboard."""
+    for input_name in input_names:
+        if input_name in _just_released_buttons:
+            _just_released_buttons.remove(input_name)
+            return True
+        key_repr = input_name if isinstance(input_name, str) else input_name.char if hasattr(input_name, 'char') else str(input_name)
+        if key_repr in just_released_keys:
+            just_released_keys.remove(key_repr)
+            return True
     return False
 
 def get_axis(axis_name: str, normalize: bool = True) -> float:

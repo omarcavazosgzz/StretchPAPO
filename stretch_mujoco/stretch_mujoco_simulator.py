@@ -29,7 +29,7 @@ from stretch_mujoco.datamodels.status_command import (
     StatusCommand,
 )
 import stretch_mujoco.utils as utils
-from stretch_mujoco.utils import require_connection, block_until_check_succeeds
+from stretch_mujoco.utils import require_connection, block_until_check_succeeds, euler_to_quat
 
 
 class StretchMujocoSimulator:
@@ -220,6 +220,88 @@ class StretchMujocoSimulator:
                 StatusCommand(keyframe=CommandKeyframe(name="home", trigger=True))
             )
         self.wait_while_is_moving(Actuators.lift)
+
+    @require_connection
+    def set_object_pose(
+        self,
+        body_name: str,
+        pose: dict,
+    ) -> None:
+        """Teleport a freejoint object to a new world pose.
+
+        Args:
+            body_name: Body name as defined in the scene XML.
+            pose: Dict with keys ``x``, ``y``, ``z`` (metres).
+                  Rotation is optional — supply either
+                  ``qw``/``qx``/``qy``/``qz`` (quaternion) or
+                  ``roll``/``pitch``/``yaw`` (radians, intrinsic ZYX).
+                  Defaults to identity if omitted.
+        """
+        position = (pose.get("x", 0.0), pose.get("y", 0.0), pose.get("z", 0.0))
+        if "qw" in pose:
+            quat = (pose["qw"], pose.get("qx", 0.0), pose.get("qy", 0.0), pose.get("qz", 0.0))
+        elif any(k in pose for k in ("roll", "pitch", "yaw")):
+            quat = euler_to_quat(pose.get("roll", 0.0), pose.get("pitch", 0.0), pose.get("yaw", 0.0))
+        else:
+            quat = (1.0, 0.0, 0.0, 0.0)
+        from stretch_mujoco.datamodels.status_command import CommandObjectPose
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+            command.object_pose = CommandObjectPose(
+                body_name=body_name,
+                position=tuple(position),
+                quat=tuple(quat),
+                trigger=True,
+            )
+            self.data_proxies.set_command(command)
+
+    @require_connection
+    def move_object_by(
+        self,
+        body_name: str,
+        delta: dict,
+        z_min: float = 0.45,
+    ) -> None:
+        """Move a freejoint object by a relative offset from its current pose.
+
+        Args:
+            body_name: Body name as defined in the scene XML.
+            delta: Dict with any of: ``x``, ``y``, ``z`` (metres),
+                   ``roll``, ``pitch``, ``yaw`` (radians). Missing keys default to 0.
+            z_min: Minimum allowed z value (floor clamp). Defaults to 0.45 m.
+        """
+        d = (
+            delta.get("x", 0.0), delta.get("y", 0.0), delta.get("z", 0.0),
+            delta.get("roll", 0.0), delta.get("pitch", 0.0), delta.get("yaw", 0.0),
+        )
+        from stretch_mujoco.datamodels.status_command import CommandObjectMoveBy
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+            command.object_move_by = CommandObjectMoveBy(
+                body_name=body_name,
+                delta=d,
+                z_min=z_min,
+                trigger=True,
+            )
+            self.data_proxies.set_command(command)
+
+    @require_connection
+    def set_object_gravity(self, body_name: str, enabled: bool) -> None:
+        """Enable or disable gravity for a freejoint body.
+
+        Args:
+            body_name: Body name as defined in the scene XML.
+            enabled: True = normal gravity, False = zero gravity (body floats).
+        """
+        from stretch_mujoco.datamodels.status_command import CommandObjectGravity
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+            command.object_gravity = CommandObjectGravity(
+                body_name=body_name,
+                enabled=enabled,
+                trigger=True,
+            )
+            self.data_proxies.set_command(command)
 
     @require_connection
     def stow(self) -> None:

@@ -45,6 +45,32 @@ class CommandCameraManagement:
 
 
 @dataclass
+class CommandObjectPose:
+    """Teleport a freejoint body to an exact world pose."""
+    body_name: str
+    position: tuple[float, float, float]
+    quat: tuple[float, float, float, float]  # (qw, qx, qy, qz)
+    trigger: bool
+
+
+@dataclass
+class CommandObjectMoveBy:
+    """Move a freejoint body by a relative offset from its current position."""
+    body_name: str
+    delta: tuple[float, float, float, float, float, float]  # (dx, dy, dz, droll, dpitch, dyaw)
+    z_min: float
+    trigger: bool
+
+
+@dataclass
+class CommandObjectGravity:
+    """Enable or disable gravity compensation for a freejoint body."""
+    body_name: str
+    enabled: bool   # True = gravity on, False = gravity off (gravcomp=1)
+    trigger: bool
+
+
+@dataclass
 class StatusCommand:
     """
     A dataclass to ferry movement commands to the Mujoco server.
@@ -56,6 +82,9 @@ class StatusCommand:
     keyframe: CommandKeyframe = field(default_factory=lambda:CommandKeyframe("", False))
     coordinate_frame_arrows_viz: list[CommandCoordinateFrameArrowsViz] = field(default_factory=list)
     camera_management: CommandCameraManagement | None = None
+    object_pose: CommandObjectPose | None = None
+    object_move_by: CommandObjectMoveBy | None = None
+    object_gravity: CommandObjectGravity | None = None
 
 
 
@@ -100,6 +129,12 @@ class StatusCommand:
         command.move_by = {
             key: dataclass_from_dict(CommandMove, val) for key, val in command.move_by.items()  # type: ignore
         }
+        if command.object_pose is not None and isinstance(command.object_pose, dict):
+            command.object_pose = dataclass_from_dict(CommandObjectPose, command.object_pose)
+        if command.object_move_by is not None and isinstance(command.object_move_by, dict):
+            command.object_move_by = dataclass_from_dict(CommandObjectMoveBy, command.object_move_by)
+        if command.object_gravity is not None and isinstance(command.object_gravity, dict):
+            command.object_gravity = dataclass_from_dict(CommandObjectGravity, command.object_gravity)
         return command
 
     @staticmethod

@@ -40,6 +40,37 @@ urdf_file_path = pkg_path + f"/{model_name}/stretch_description_{model_name}_{to
 mesh_files_directory_path = pkg_path + f"/{model_name}/meshes"
 
 
+def euler_to_quat(roll: float, pitch: float, yaw: float) -> tuple:
+    """Convert intrinsic ZYX euler angles (radians) to unit quaternion (qw, qx, qy, qz)."""
+    cr, sr = math.cos(roll / 2), math.sin(roll / 2)
+    cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
+    cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
+    return (
+        cr * cp * cy + sr * sp * sy,
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+    )
+
+
+def quat_mul(q1: tuple, q2: tuple) -> tuple:
+    """Multiply two quaternions (qw, qx, qy, qz). Returns q1 * q2."""
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    return (
+        w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        w1*z2 + x1*y2 - y1*x2 + z1*w2,
+    )
+
+
+def quat_normalize(q: tuple) -> tuple:
+    """Return a unit quaternion (qw, qx, qy, qz)."""
+    n = math.sqrt(sum(v * v for v in q))
+    return tuple(v / n for v in q) if n > 1e-10 else (1.0, 0.0, 0.0, 0.0)
+
+
 def require_connection(function):
     """Wraps class methods that need self"""
 

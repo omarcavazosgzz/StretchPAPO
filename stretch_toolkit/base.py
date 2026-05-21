@@ -488,6 +488,88 @@ class TeleopProvider:
         return merge_proportional(cmd_teleop, cmd_autonomous)
 
 
+class ObjectControlProvider:
+    """Maps gamepad/keyboard inputs to a pose delta dict for controller.move_object_by().
+
+    Call get_delta() each frame and pass the result directly to
+    controller.move_object_by(body_name, delta).  Returns an empty dict when
+    no movement key is held — move_object_by treats that as a no-op.
+
+    Default bindings:
+        z / DPAD_UP    →  +z  (up)
+        x / DPAD_DOWN  →  -z  (down)
+        w / s          →  +y / -y
+        a / d          →  -x / +x
+        i / k          →  pitch +/-
+        j / l          →  yaw   +/-
+        u / o          →  roll  +/-
+        Y / g          →  gravity OFF (float)
+        B / f          →  gravity ON  (fall)
+    """
+
+    def __init__(self, move_step: float = 0.02, rot_step: float = 0.05):
+        """
+        Args:
+            move_step: Translation per frame while a move key is held (metres).
+            rot_step:  Rotation per frame while a rotate key is held (radians).
+        """
+        self.move_step = move_step
+        self.rot_step = rot_step
+
+    def get_delta(self) -> tuple[dict, bool | None]:
+        """Return a pose delta and gravity command based on the current input state.
+
+        Returns:
+            (delta, gravity) where:
+              - delta: dict with any of {x, y, z, roll, pitch, yaw}.
+                Pass directly to controller.move_object_by().
+              - gravity: True = enable, False = disable, None = no change.
+                Pass directly to controller.set_object_gravity().
+        """
+        delta = {}
+        gravity = None
+
+        # ── Translation ──────────────────────────────────────────────
+        if ci.is_pressed("DPAD_UP", "z"):
+            delta["z"] = self.move_step
+        elif ci.is_pressed("DPAD_DOWN", "x"):
+            delta["z"] = -self.move_step
+
+        if ci.is_pressed("w"):
+            delta["y"] = self.move_step
+        elif ci.is_pressed("s"):
+            delta["y"] = -self.move_step
+
+        if ci.is_pressed("d"):
+            delta["x"] = self.move_step
+        elif ci.is_pressed("a"):
+            delta["x"] = -self.move_step
+
+        # ── Rotation ─────────────────────────────────────────────────
+        if ci.is_pressed("i"):
+            delta["pitch"] = self.rot_step
+        elif ci.is_pressed("k"):
+            delta["pitch"] = -self.rot_step
+
+        if ci.is_pressed("j"):
+            delta["yaw"] = self.rot_step
+        elif ci.is_pressed("l"):
+            delta["yaw"] = -self.rot_step
+
+        if ci.is_pressed("u"):
+            delta["roll"] = self.rot_step
+        elif ci.is_pressed("o"):
+            delta["roll"] = -self.rot_step
+
+        # ── Gravity ───────────────────────────────────────────────────
+        if ci.rising_edge("Y", "g"):
+            gravity = False   # disable — object floats
+        elif ci.rising_edge("B", "f"):
+            gravity = True    # enable — object falls
+
+        return delta, gravity
+
+
 class JointController:
     """Base class for joint controllers."""
 
@@ -531,6 +613,27 @@ class JointController:
             represented as np.inf.  Returns None on error.
         """
         raise NotImplementedError("get_lidar_ranges() is not implemented for this backend.")
+
+    def set_object_pose(self, body_name: str, pose: dict) -> None:
+        """Teleport a freejoint object to a new world pose. No-op on physical robot."""
+        pass
+
+    def move_object_by(self, body_name: str, delta: dict, z_min: float = 0.45) -> None:
+        """Move a freejoint object by a relative offset. No-op on physical robot."""
+        pass
+
+    def set_object_gravity(self, body_name: str, enabled: bool | None) -> None:
+        """Enable or disable gravity for a freejoint object. No-op on physical robot."""
+        pass
+
+    def list_scene_objects(self) -> list:
+        """Return names of all freejoint bodies in the scene.
+
+        On the physical robot this returns an empty list.
+        In simulation it returns body names that can be passed to
+        set_object_pose() and move_object_by().
+        """
+        return []
 
     def stop(self):
         """Stop all robot motion."""

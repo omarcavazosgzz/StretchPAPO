@@ -26,10 +26,10 @@ from stretch_mujoco.mujoco_server_camera_manager import (
     MujocoServerCameraManagerThreaded,
     MujocoServerCameraManagerSync,
 )
-from stretch_mujoco.datamodels.status_command import CommandBaseVelocity, CommandMove, StatusCommand
+from stretch_mujoco.datamodels.status_command import CommandBaseVelocity, CommandMove, CommandObjectPose, CommandObjectMoveBy, CommandObjectGravity, StatusCommand
 from stretch_mujoco.mujoco_server_sensor_manager import MujocoServerSensorManagerThreaded
 import stretch_mujoco.utils as utils
-from stretch_mujoco.utils import FpsCounter
+from stretch_mujoco.utils import FpsCounter, euler_to_quat, quat_mul, quat_normalize
 
 
 @dataclass
@@ -202,6 +202,87 @@ class MujocoServer:
             camera_hz=camera_hz,
             cameras_to_use=cameras_to_use,
         )
+
+    def set_free_body_pose(
+        self,
+        body_name: str,
+        position: tuple[float, float, float],
+        quat: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+    ):
+        """Teleport a freejoint body to a new world pose."""
+        body_id = mujoco.mj_name2id(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_name)
+        if body_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+
+        joint_id = next(
+            (j for j in range(self.mjmodel.njnt)
+             if self.mjmodel.jnt_bodyid[j] == body_id
+             and self.mjmodel.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE),
+            -1,
+        )
+        if joint_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' does not have a freejoint.")
+            return
+
+        qadr = self.mjmodel.jnt_qposadr[joint_id]
+        dadr = self.mjmodel.jnt_dofadr[joint_id]
+        # Freejoint qpos layout: x, y, z, qw, qx, qy, qz
+        self.mjdata.qpos[qadr:qadr + 3] = position
+        self.mjdata.qpos[qadr + 3:qadr + 7] = quat
+        self.mjdata.qvel[dadr:dadr + 6] = 0.0
+        mujoco.mj_forward(self.mjmodel, self.mjdata)
+
+    def move_free_body_by(
+        self,
+        body_name: str,
+        delta: tuple[float, float, float, float, float, float],
+        z_min: float = 0.45,
+    ):
+        """Move a freejoint body by a relative offset (position + euler rotation) from its current pose."""
+        body_id = mujoco.mj_name2id(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_name)
+        if body_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+
+        joint_id = next(
+            (j for j in range(self.mjmodel.njnt)
+             if self.mjmodel.jnt_bodyid[j] == body_id
+             and self.mjmodel.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE),
+            -1,
+        )
+        if joint_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' does not have a freejoint.")
+            return
+
+        qadr = self.mjmodel.jnt_qposadr[joint_id]
+        dadr = self.mjmodel.jnt_dofadr[joint_id]
+
+        dx, dy, dz, droll, dpitch, dyaw = delta
+
+        # Apply position delta
+        current_pos = self.mjdata.qpos[qadr:qadr + 3].copy()
+        new_pos = current_pos + np.array([dx, dy, dz], dtype=float)
+        new_pos[2] = max(new_pos[2], z_min)
+        self.mjdata.qpos[qadr:qadr + 3] = new_pos
+
+        # Apply rotation delta (object-local frame)
+        if droll != 0.0 or dpitch != 0.0 or dyaw != 0.0:
+            current_quat = tuple(float(v) for v in self.mjdata.qpos[qadr + 3:qadr + 7])
+            delta_quat = euler_to_quat(droll, dpitch, dyaw)
+            new_quat = quat_normalize(quat_mul(current_quat, delta_quat))
+            self.mjdata.qpos[qadr + 3:qadr + 7] = new_quat
+
+        self.mjdata.qvel[dadr:dadr + 6] = 0.0
+        mujoco.mj_forward(self.mjmodel, self.mjdata)
+
+    def set_body_gravity(self, body_name: str, enabled: bool):
+        """Set gravity for a body.  enabled=False → gravcomp=1 (floats); enabled=True → gravcomp=0 (normal)."""
+        body_id = mujoco.mj_name2id(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_name)
+        if body_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+        self.mjmodel.body_gravcomp[body_id] = 0.0 if enabled else 1.0
 
     def change_start_pose(self,model: MjModel, translation: list|None, rotation_quat: list|None):
         body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "base_link")
@@ -577,6 +658,32 @@ class MujocoServer:
         if command_status.camera_management is not None and command_status.camera_management.trigger:
             command_status.camera_management.trigger = False
             self._handle_camera_management(command_status.camera_management)
+
+        # object pose (teleport)
+        if command_status.object_pose is not None and command_status.object_pose.trigger:
+            command_status.object_pose.trigger = False
+            self.set_free_body_pose(
+                body_name=command_status.object_pose.body_name,
+                position=command_status.object_pose.position,
+                quat=command_status.object_pose.quat,
+            )
+
+        # object relative movement
+        if command_status.object_move_by is not None and command_status.object_move_by.trigger:
+            command_status.object_move_by.trigger = False
+            self.move_free_body_by(
+                body_name=command_status.object_move_by.body_name,
+                delta=command_status.object_move_by.delta,
+                z_min=command_status.object_move_by.z_min,
+            )
+
+        # object gravity toggle
+        if command_status.object_gravity is not None and command_status.object_gravity.trigger:
+            command_status.object_gravity.trigger = False
+            self.set_body_gravity(
+                body_name=command_status.object_gravity.body_name,
+                enabled=command_status.object_gravity.enabled,
+            )
 
         self.base_controller.update()
 

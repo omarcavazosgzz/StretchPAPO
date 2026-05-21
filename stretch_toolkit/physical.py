@@ -224,6 +224,12 @@ class PhysicalJointController(JointController):
         print("[LiDAR] get_lidar_ranges() is not yet implemented for the physical robot.")
         return None
 
+    def set_object_pose(self, body_name: str, position: tuple, quat: tuple = (1.0, 0.0, 0.0, 0.0)) -> None:
+        pass  # No-op on physical robot
+
+    def move_object_by(self, body_name: str, delta: tuple, z_min: float = 0.45) -> None:
+        pass  # No-op on physical robot
+
 
 # Camera instances for physical robot
 # D435i head camera (rotated 90° CW) - separate RGB and depth cameras
