@@ -593,6 +593,17 @@ class MujocoServer:
             new_status.base.theta,
         ) = self.base_controller.get_base_pose()
 
+        # Freejoint body poses (written into status every frame at zero extra IPC cost)
+        object_poses = {}
+        for i in range(self.mjmodel.njnt):
+            if self.mjmodel.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
+                body_id = self.mjmodel.jnt_bodyid[i]
+                body_name = mujoco.mj_id2name(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_id)
+                if body_name:
+                    qadr = self.mjmodel.jnt_qposadr[i]
+                    object_poses[body_name] = tuple(float(v) for v in self.mjdata.qpos[qadr:qadr + 7])
+        new_status.object_poses = object_poses
+
         self.data_proxies.set_status(new_status)
 
     def _to_real_gripper_range(self, pos: float) -> float:

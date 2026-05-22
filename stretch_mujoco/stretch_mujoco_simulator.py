@@ -286,6 +286,7 @@ class StretchMujocoSimulator:
             self.data_proxies.set_command(command)
 
     @require_connection
+    @require_connection
     def set_object_gravity(self, body_name: str, enabled: bool) -> None:
         """Enable or disable gravity for a freejoint body.
 
@@ -302,6 +303,19 @@ class StretchMujocoSimulator:
                 trigger=True,
             )
             self.data_proxies.set_command(command)
+
+    @require_connection
+    def get_object_pose(self, body_name: str) -> dict | None:
+        """Get the current world pose of a freejoint body.
+
+        Returns:
+            Dict with keys x, y, z, qw, qx, qy, qz, or None if not found.
+        """
+        poses = self.pull_status().object_poses
+        if body_name not in poses:
+            return None
+        x, y, z, qw, qx, qy, qz = poses[body_name]
+        return {"x": x, "y": y, "z": z, "qw": qw, "qx": qx, "qy": qy, "qz": qz}
 
     @require_connection
     def stow(self) -> None:

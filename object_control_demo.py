@@ -48,6 +48,10 @@ def main():
             selected = (selected + inp.rising_edge("RB", "m") - inp.rising_edge("LB", "n")) % len(objects)
             if selected != prev:
                 print(f"Selected: {objects[selected]}")
+                pose = controller.get_object_pose(objects[selected])
+                if pose:
+                    print(f"  x={pose['x']:.3f}  y={pose['y']:.3f}  z={pose['z']:.3f}  "
+                          f"qw={pose['qw']:.3f}  qx={pose['qx']:.3f}  qy={pose['qy']:.3f}  qz={pose['qz']:.3f}")
 
             # ── Move / rotate + gravity ────────────────────────────────────
             delta, gravity = obj_ctrl.get_delta()

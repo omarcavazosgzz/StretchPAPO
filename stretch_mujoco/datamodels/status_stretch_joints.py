@@ -1,5 +1,5 @@
 import copy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from stretch_mujoco.utils import dataclass_from_dict
 
 @dataclass
@@ -37,6 +37,7 @@ class StatusStretchJoints:
     wrist_pitch: PositionVelocity
     wrist_roll: PositionVelocity
     gripper: PositionVelocity
+    object_poses: dict = field(default_factory=dict)  # body_name -> (x, y, z, qw, qx, qy, qz)
 
     def __getitem__(self, name:str):
         """For backward compatibility: allows access with the square brackets []"""

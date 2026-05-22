@@ -626,6 +626,10 @@ class JointController:
         """Enable or disable gravity for a freejoint object. No-op on physical robot."""
         pass
 
+    def get_object_pose(self, body_name: str) -> dict | None:
+        """Get the current world pose of a freejoint body. Returns None on physical robot."""
+        return None
+
     def list_scene_objects(self) -> list:
         """Return names of all freejoint bodies in the scene.
 

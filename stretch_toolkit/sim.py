@@ -344,6 +344,10 @@ class SimulatedJointController(JointController):
             return
         self.sim.set_object_gravity(body_name, enabled)
 
+    def get_object_pose(self, body_name: str) -> dict | None:
+        """Get the current world pose of a freejoint body."""
+        return self.sim.get_object_pose(body_name)
+
     def list_scene_objects(self) -> list:
         """Return names of all freejoint bodies in the active scene XML.
 
