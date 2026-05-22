@@ -134,10 +134,12 @@ if not USE_PHYSICAL:
                     style = robocasa_config.get('style', 0)
                     
                     print(f"[stretch_toolkit] Loading RoboCasa environment: {task} (layout={layout}, style={style})")
+                    custom_objects = robocasa_config.get('custom_objects', None)
                     model, xml, objects_info = model_generation_wizard(
                         task=task,
                         layout=layout,
                         style=style,
+                        custom_objects=custom_objects,
                     )
                     sim_kwargs['model'] = model  # Pass generated model to simulator
                     

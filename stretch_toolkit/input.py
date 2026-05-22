@@ -176,7 +176,7 @@ _listener.start()
 # Start the keyboard listener (only if available)
 if KEYBOARD_AVAILABLE:
     def _on_press(key):
-        key_repr = key if isinstance(key, str) else key.char if hasattr(key, 'char') else str(key)
+        key_repr = key if isinstance(key, str) else (key.char if hasattr(key, 'char') and key.char is not None else str(key))
         # Filter out None values before adding to sets
         if key_repr is None:
             return
@@ -189,7 +189,7 @@ if KEYBOARD_AVAILABLE:
             toggles[key_repr] = not toggles[key_repr]
 
     def _on_release(key):
-        key_repr = key if isinstance(key, str) else key.char if hasattr(key, 'char') else str(key)
+        key_repr = key if isinstance(key, str) else (key.char if hasattr(key, 'char') and key.char is not None else str(key))
         # Filter out None values
         if key_repr is None:
             return

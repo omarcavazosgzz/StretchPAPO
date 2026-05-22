@@ -339,6 +339,94 @@ def insert_line_after_mujoco_tag(xml_string: str, line_to_insert: str) -> str:
     return modified_xml
 
 
+def xml_inject_mesh_object(
+    xml_string: str,
+    name: str,
+    obj_path: str,
+    texture_path: str,
+    pos: list,
+    collision_size: list,
+    collision_pos: list | None = None,
+    mass: float = 0.10,
+    gravcomp: float = 1.0,
+) -> str:
+    """Inject a mesh object (visual + collision box) into a MuJoCo XML string.
+
+    Adds the necessary texture, material and mesh assets, then appends a free-
+    joint body to <worldbody>.  All file paths must be absolute because the
+    robocasa XML has no assetdir.
+
+    Args:
+        xml_string:      MuJoCo XML string to modify.
+        name:            Unique body / asset name prefix.
+        obj_path:        Absolute path to the .obj mesh file.
+        texture_path:    Absolute path to the texture .png file.
+        pos:             [x, y, z] world position of the body.
+        collision_size:  [sx, sy, sz] half-extents for the collision box.
+        collision_pos:   [x, y, z] local offset of the collision box within the
+                         body.  Defaults to [0, 0, collision_size[2]].
+        mass:            Body mass in kg.
+        gravcomp:        Gravity compensation (1.0 = floats, 0.0 = falls).
+    Returns:
+        Modified XML string.
+    """
+    if collision_pos is None:
+        collision_pos = [0.0, 0.0, float(collision_size[2])]
+
+    root = ET.fromstring(xml_string)
+
+    # ── Assets ────────────────────────────────────────────────────────────
+    asset = root.find('asset')
+    if asset is None:
+        asset = ET.SubElement(root, 'asset')
+
+    tex = ET.SubElement(asset, 'texture')
+    tex.set('name', f'{name}_texture')
+    tex.set('type', '2d')
+    tex.set('file', texture_path)
+
+    mat = ET.SubElement(asset, 'material')
+    mat.set('name', f'{name}_material')
+    mat.set('texture', f'{name}_texture')
+
+    mesh = ET.SubElement(asset, 'mesh')
+    mesh.set('name', f'{name}_mesh')
+    mesh.set('file', obj_path)
+    mesh.set('scale', '1 1 1')
+
+    # ── Body ──────────────────────────────────────────────────────────────
+    worldbody = root.find('worldbody')
+    if worldbody is None:
+        worldbody = ET.SubElement(root, 'worldbody')
+
+    body = ET.SubElement(worldbody, 'body')
+    body.set('name', name)
+    body.set('pos', ' '.join(str(v) for v in pos))
+    body.set('gravcomp', str(gravcomp))
+
+    ET.SubElement(body, 'freejoint')
+
+    visual = ET.SubElement(body, 'geom')
+    visual.set('name', f'{name}_visual')
+    visual.set('type', 'mesh')
+    visual.set('mesh', f'{name}_mesh')
+    visual.set('material', f'{name}_material')
+    visual.set('contype', '0')
+    visual.set('conaffinity', '0')
+    visual.set('density', '0')
+
+    col = ET.SubElement(body, 'geom')
+    col.set('name', f'{name}_collision')
+    col.set('type', 'box')
+    col.set('pos', ' '.join(str(v) for v in collision_pos))
+    col.set('size', ' '.join(str(v) for v in collision_size))
+    col.set('mass', str(mass))
+    col.set('rgba', '1 0 0 0')
+    col.set('friction', '1 0.005 0.0001')
+
+    return ET.tostring(root, encoding='unicode')
+
+
 def get_absolute_path_stretch_xml(robot_pose_attrib: dict | None = None) -> str:
     """
     Generates Robot XML with absolute path to mesh files

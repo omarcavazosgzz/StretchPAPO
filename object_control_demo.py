@@ -1,7 +1,9 @@
 """
-Object control demo — cycle through scene objects and move them up/down.
+Object control demo — cycle through scene objects and move them, or drive the robot.
 
-Controls:
+Press t / START to toggle between Teleop mode and Object mode.
+
+Controls (Object mode):
     RB / m  →  next object
     LB / n  →  previous object
     z / DPAD_UP    →  move up
@@ -14,17 +16,21 @@ Controls:
     Y / g          →  gravity OFF (float)
     B / f          →  gravity ON  (fall)
 
+Controls (Teleop mode):
+    Standard teleop keys / gamepad sticks
+
 Run with:
     uv run object_control_demo.py
 """
 
-from stretch_toolkit import controller, BACKEND_NAME, ObjectControlProvider
+from stretch_toolkit import controller, BACKEND_NAME, ObjectControlProvider, TeleopProvider
 import stretch_toolkit.input as inp
 import time
 
 MOVE_STEP = 0.02    # metres per tick
 ROT_STEP  = 0.05    # radians per tick (~3°)
 obj_ctrl  = ObjectControlProvider(move_step=MOVE_STEP, rot_step=ROT_STEP)
+tp        = TeleopProvider(is_stretch_env=False)
 
 
 def main():
@@ -37,26 +43,41 @@ def main():
         return
 
     selected = 0
+    mode = "object"
     print(f"Found {len(objects)} object(s): {objects}")
     print(f"Selected: {objects[selected]}")
-    print("RB/m = next, LB/n = prev | z/x=up/down | wasd=xy | uiojkl=rot | Y/g=float B/f=fall | Ctrl+C to quit.\n")
+    print("t/START = toggle mode | RB/m = next, LB/n = prev | z/x=up/down | wasd=xy | uiojkl=rot | Y/g=float B/f=fall | Ctrl+C to quit.")
+    print(f"[Mode: {mode}]\n")
 
     try:
         while True:
-            # ── Cycle selection ───────────────────────────────────────
-            prev = selected
-            selected = (selected + inp.rising_edge("RB", "m") - inp.rising_edge("LB", "n")) % len(objects)
-            if selected != prev:
-                print(f"Selected: {objects[selected]}")
-                pose = controller.get_object_pose(objects[selected])
-                if pose:
-                    print(f"  x={pose['x']:.3f}  y={pose['y']:.3f}  z={pose['z']:.3f}  "
-                          f"qw={pose['qw']:.3f}  qx={pose['qx']:.3f}  qy={pose['qy']:.3f}  qz={pose['qz']:.3f}")
+            # ── Toggle mode ───────────────────────────────────────────
+            if inp.rising_edge("t", "START"):
+                mode = "teleop" if mode == "object" else "object"
+                print(f"[Mode: {mode}]")
+                if mode == "object":
+                    controller.set_velocities({"base_forward": 0, "base_counterclockwise": 0})
 
-            # ── Move / rotate + gravity ────────────────────────────────────
-            delta, gravity = obj_ctrl.get_delta()
-            controller.move_object_by(objects[selected], delta)
-            controller.set_object_gravity(objects[selected], gravity)
+            if mode == "teleop":
+                # ── Drive the robot ───────────────────────────────────
+                velocities = tp.get_normalized_velocities()
+                controller.set_velocities(velocities)
+
+            else:
+                # ── Cycle selection ───────────────────────────────────
+                prev = selected
+                selected = (selected + inp.rising_edge("RB", "m") - inp.rising_edge("LB", "n")) % len(objects)
+                if selected != prev:
+                    print(f"Selected: {objects[selected]}")
+                    pose = controller.get_object_pose(objects[selected])
+                    if pose:
+                        print(f"  x={pose['x']:.3f}  y={pose['y']:.3f}  z={pose['z']:.3f}  "
+                              f"qw={pose['qw']:.3f}  qx={pose['qx']:.3f}  qy={pose['qy']:.3f}  qz={pose['qz']:.3f}")
+
+                # ── Move / rotate + gravity ───────────────────────────
+                delta, gravity = obj_ctrl.get_delta()
+                controller.move_object_by(objects[selected], delta)
+                controller.set_object_gravity(objects[selected], gravity)
 
             time.sleep(1 / 30)
 

@@ -17,6 +17,7 @@ from stretch_mujoco.utils import (
     xml_modify_body_pos,
     xml_remove_subelement,
     xml_remove_tag_by_name,
+    xml_inject_mesh_object,
 )
 
 
@@ -132,9 +133,9 @@ def model_generation_wizard(
     style: int = None,
     write_to_file: str = None,
     robot_spawn_pose: dict = None,
+    custom_objects: list[dict] | None = None,
 ) -> Tuple[mujoco.MjModel, str, dict]:
-    """
-    Wizard/API to generate a kitchen model for a given task, layout, and style.
+    """Wizard/API to generate a kitchen model for a given task, layout, and style.
     If layout and style are not provided, it will take you through a wizard to choose them in the terminal.
     If robot_spawn_pose is not provided, it will spawn the robot to the default pose from robocasa fixtures.
     You can also write the generated xml model with absolutepaths to a file.
@@ -229,6 +230,24 @@ def model_generation_wizard(
     # add stretch to kitchen
     click.secho("\nMaking Robot Placement...\n", fg="yellow")
     xml = add_stretch_to_kitchen(xml, robot_base_fixture_pose)
+
+    # ── Inject custom mesh objects ─────────────────────────────────────────
+    if custom_objects:
+        from stretch_mujoco.utils import models_path
+        assets_path = models_path + "/assets/"
+        for obj in custom_objects:
+            xml = xml_inject_mesh_object(
+                xml,
+                name=obj['name'],
+                obj_path=assets_path + obj['obj'],
+                texture_path=assets_path + obj['texture'],
+                pos=obj['pos'],
+                collision_size=obj['collision_size'],
+                collision_pos=obj.get('collision_pos'),
+                mass=obj.get('mass', 0.10),
+                gravcomp=obj.get('gravcomp', 1.0),
+            )
+
     model = mujoco.MjModel.from_xml_string(xml)
 
     if write_to_file is not None:
