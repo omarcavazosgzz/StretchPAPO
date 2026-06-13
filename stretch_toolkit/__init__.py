@@ -117,8 +117,27 @@ if not USE_PHYSICAL:
                 except Exception:
                     pass
             
+            # Headless mode + pre-registered cameras (opt-in via env vars).
+            # Default behavior is unchanged: GUI viewer + lazy camera registration.
+            #   STRETCH_SIM_HEADLESS=1            -> run without the MuJoCo viewer
+            #   STRETCH_SIM_CAMERAS=a,b,c         -> keep these cameras always-on
+            # Pre-registering cameras avoids the watchdog add/remove thrash that
+            # happens under slow (software-GL) rendering.
+            headless = os.getenv('STRETCH_SIM_HEADLESS', '0') == '1'
+            cam_env = os.getenv('STRETCH_SIM_CAMERAS', '').strip()
+            preregistered_cameras = []
+            if cam_env:
+                for _name in cam_env.split(','):
+                    _name = _name.strip()
+                    if not _name:
+                        continue
+                    try:
+                        preregistered_cameras.append(StretchCameras[_name])
+                    except KeyError:
+                        print(f"[stretch_toolkit] Warning: unknown camera '{_name}' in STRETCH_SIM_CAMERAS")
+
             # Prepare simulator initialization kwargs
-            sim_kwargs = {'cameras_to_use': []}  # Keep camera loading separate
+            sim_kwargs = {'cameras_to_use': list(preregistered_cameras)}
             
             start_translation = _full_config.get('start_translation', None)
             if start_translation is not None:
@@ -141,6 +160,25 @@ if not USE_PHYSICAL:
                         style=style,
                         custom_objects=custom_objects,
                     )
+
+                    # Opt-in dimming to fix over-exposed (washed-out white) camera
+                    # views in some RoboCasa layouts. STRETCH_DIM_LIGHTS=<factor>,
+                    # e.g. 0.3, scales scene + headlight intensity down.
+                    _dim = os.getenv('STRETCH_DIM_LIGHTS', '').strip()
+                    if _dim:
+                        try:
+                            f = float(_dim)
+                            import numpy as _np
+                            if model.nlight > 0:
+                                model.light_diffuse[:] = _np.clip(model.light_diffuse * f, 0, 1)
+                                model.light_specular[:] = _np.clip(model.light_specular * f, 0, 1)
+                            hl = model.vis.headlight
+                            hl.diffuse[:] = _np.clip(_np.array(hl.diffuse) * f, 0, 1)
+                            hl.specular[:] = _np.clip(_np.array(hl.specular) * f, 0, 1)
+                            print(f"[stretch_toolkit] Dimmed lights by factor {f}")
+                        except Exception as _e:
+                            print(f"[stretch_toolkit] Warning: could not dim lights: {_e}")
+
                     sim_kwargs['model'] = model  # Pass generated model to simulator
                     
                 except Exception as e:
@@ -149,12 +187,16 @@ if not USE_PHYSICAL:
             
             # Initialize simulator (with or without robocasa model)
             _sim = StretchMujocoSimulator(**sim_kwargs)
-            _sim.start()
+            _sim.start(headless=headless)
             _controller = SimulatedJointController(sim=_sim)
-            
-            # Start camera watchdog thread
+
+            # The camera watchdog auto-deregisters cameras that haven't been read
+            # recently. That's only useful with lazy registration; when we
+            # pre-register a fixed camera set we want them alive for the whole
+            # session, so skip the watchdog to stop it fighting our cameras.
             from . import sim
-            sim._start_watchdog()
+            if not preregistered_cameras:
+                sim._start_watchdog()
             
             if robocasa_config:
                 print("[stretch_toolkit] RoboCasa environment initialized")
