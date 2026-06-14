@@ -115,31 +115,54 @@ def drive_forward(controller, dist, speed=0.3, max_time=6.0, brake_lidar=True):
     stop_base(controller)
 
 
-def coarse_align_gripper(controller, sim, servo, obj_xy, iters=4, log=print):
-    """Pone el GRIPPER sobre el objeto usando posiciones 3D (objeto localizado por
-    camara + pose de la muneca). Ajusta arm_out (lateral, -Y_local) y avance de base
-    (x_local). Itera hasta quedar alineado. Returns offset final (m)."""
-    off_mag = 9.0
-    for _ in range(iters):
-        w = np.array(sim.pull_status().camera_poses["d405_rgb"]["pos"])[:2]
+def _wrist_xy(sim):
+    return np.array(sim.pull_status().camera_poses["d405_rgb"]["pos"])[:2]
+
+
+def coarse_align_gripper(controller, sim, servo, obj_xy, iters=5, log=print):
+    """Pone el GRIPPER sobre el objeto (objeto localizado por camara + pose de la
+    muneca). DESACOPLADO: el LATERAL con arm_out (preciso) y el eje DEL MOSTRADOR
+    con la base en lazo cerrado (drive_forward + odometria). Returns offset final."""
+    obj_xy = np.array(obj_xy)
+    # 1) LATERAL con arm_out (en pasos, por si necesita >rango)
+    for _ in range(3):
+        bx, by, th = _base_pose(controller)
+        ymloc = np.array([np.sin(th), -np.cos(th)])
+        d_arm = float((obj_xy - _wrist_xy(sim)) @ ymloc)
+        if abs(d_arm) < 0.02:
+            break
+        cur = controller.get_state()["arm_out"]
+        new = float(np.clip(cur + d_arm, 0.0, 0.5))
+        servo.move_to({"arm_out": new})
+        t = time.time()
+        while time.time() - t < 3 and abs(controller.get_state()["arm_out"] - new) > 0.02:
+            servo.hold(); time.sleep(DT)
+        if new in (0.0, 0.5):     # arm en su limite: no puede mas lateral
+            break
+    # 2) A LO LARGO del mostrador con la base: LAZO CERRADO proporcional (frena
+    #    cerca del objetivo -> sin sobrepaso). Signo de base_forward autocalibrado.
+    def d_fwd_now():
         bx, by, th = _base_pose(controller)
         xloc = np.array([np.cos(th), np.sin(th)])
-        ymloc = np.array([np.sin(th), -np.cos(th)])     # direccion del brazo
-        off = np.array(obj_xy) - w
-        off_mag = float(np.hypot(*off))
-        if off_mag < 0.04:
+        return float((obj_xy - _wrist_xy(sim)) @ xloc), xloc
+
+    w_before = _wrist_xy(sim)
+    _, xloc0 = d_fwd_now()
+    controller.set_velocities({"base_forward": 0.3, "base_counterclockwise": 0.0})
+    time.sleep(0.4)
+    stop_base(controller)
+    moved = float((_wrist_xy(sim) - w_before) @ xloc0)        # mov del gripper al avanzar +
+    fwd_sign = 1.0 if moved >= 0 else -1.0
+    for _ in range(80):
+        d_fwd, _ = d_fwd_now()
+        if abs(d_fwd) < 0.03:
             break
-        d_arm = float(off @ ymloc)
-        d_fwd = float(off @ xloc)
-        cur_arm = controller.get_state()["arm_out"]
-        new_arm = float(np.clip(cur_arm + d_arm, 0.0, 0.5))
-        servo.move_to({"arm_out": new_arm})
-        t = time.time()
-        while time.time() - t < 4 and abs(controller.get_state()["arm_out"] - new_arm) > 0.02:
-            servo.hold(); time.sleep(DT)
-        if abs(d_fwd) > 0.03:
-            drive_forward(controller, d_fwd)
-        log(f"[pos]   alineando gripper: offset={off_mag:.2f}m (d_arm={d_arm:+.2f} d_fwd={d_fwd:+.2f})")
+        v = float(np.clip(fwd_sign * 4.0 * d_fwd, -0.4, 0.4))
+        controller.set_velocities({"base_forward": v, "base_counterclockwise": 0.0})
+        time.sleep(DT)
+    stop_base(controller)
+    off_mag = float(np.hypot(*(obj_xy - _wrist_xy(sim))))
+    log(f"[pos]   alineado: offset final={off_mag:.2f}m (fwd_sign={fwd_sign:+.0f})")
     return off_mag
 
 
