@@ -1,0 +1,24 @@
+{
+  "start_translation": [1, -2, 0.30],
+  "_comment_translation": "Robot starting position [x, y, z] in meters. Table is at y=-1.0, so larger y = farther from table.",
+
+  "robocasa": {
+    "enabled": true,
+    "task": "PnPCounterToCab",
+    "layout": 0,
+    "style": 0,
+    "_comment": "Set enabled to true to load RoboCasa kitchen environment. Task examples: PnPCounterToCab, PnPCounterToSink, PnPSinkToCounter, etc. Layout and style are integer IDs (0-9 typically).",
+    "custom_objects": [
+      {
+        "name": "android_lego",
+        "obj": "custom_objects/mujoco_scanned_objects/models/Android_Lego/model.obj",
+        "texture": "custom_objects/mujoco_scanned_objects/models/Android_Lego/texture.png",
+        "pos": [0.0, 0.0, 1.0],
+        "collision_size": [0.028, 0.020, 0.042],
+        "collision_pos": [0.0, 0.0, 0.045],
+        "mass": 0.10,
+        "gravcomp": 1.0
+      }
+    ]
+  }
+}

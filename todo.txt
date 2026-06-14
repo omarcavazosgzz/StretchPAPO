@@ -1,0 +1,4 @@
+- Update SimulatedJointController to:
+    - Skip extra calculation steps
+    - Use get_elapsed_time
+    - Manually calibrate sim_joint_config, while running on a 100% speed environment
