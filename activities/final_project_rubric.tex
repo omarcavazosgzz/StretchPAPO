@@ -1,0 +1,132 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{upquote}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{booktabs}
+\tcbuselibrary{skins}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    breakatwhitespace=false,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    showstringspaces=false
+}
+
+% Callout boxes
+\newtcolorbox{notebox}{colback=blue!5,colframe=blue!40!black,title=Note,fonttitle=\bfseries}
+\newtcolorbox{bonusbox}{colback=green!5,colframe=green!40!black,title=Bonus Opportunity,fonttitle=\bfseries}
+
+\title{\textbf{Final Project --- Stretch Robot Proof of Concept}}
+\author{
+    Robotics and Cyber-Physical Systems \\
+    School of Sciences and Engineering \\
+    Tecnol\'ogico de Monterrey
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{Overview}
+
+For the final project, your team will identify a practical use case for the Hello Robot Stretch and implement a proof-of-concept demonstration that shows the idea is feasible given the robot's hardware.
+
+The goal is not a finished, production-ready system. It is a convincing demonstration: something that works well enough to make a clear case that the application could be built out further. Think of it as pitching an idea to a potential collaborator or investor---you want to leave them believing the concept is real and achievable.
+
+The \texttt{stretch\_mujoco\_digital\_twin} simulator is your primary development platform. Scripts written against \texttt{stretch\_toolkit} are designed to port to the physical Stretch robot with minimal changes.
+
+\section*{Choosing a Use Case}
+
+There are no restrictions on the application domain. Any use case that makes genuine use of the Stretch robot's capabilities is acceptable. Some directions to consider:
+
+\begin{itemize}
+    \item Assistive robotics (helping people with limited mobility perform everyday tasks)
+    \item Object manipulation and sorting
+    \item Inspection or monitoring tasks
+    \item Human--robot interaction scenarios
+    \item Navigation and fetch tasks
+\end{itemize}
+
+Your use case should be specific enough that you can scope a meaningful proof of concept within the project timeline. Broad ideas (``a general-purpose home robot'') are harder to demonstrate convincingly than focused ones (``a robot that retrieves a specific object from a shelf on request'').
+
+\section*{Deliverables}
+
+Every team must submit the following:
+
+\begin{enumerate}
+    \item \textbf{Source code} --- A working script (or set of scripts) that runs in the simulator. Code should be reasonably clean and include brief comments explaining non-obvious sections. Submit via the course platform or as a link to a repository.
+
+    \item \textbf{Written report} (2--3 pages) --- A concise document covering:
+    \begin{itemize}
+        \item The use case and why the Stretch robot is a suitable platform for it
+        \item A description of how the system works
+        \item Known limitations and what would be needed to take it further
+    \end{itemize}
+
+    \item \textbf{Video} --- A recording that shows your demo running. This can be a raw screen capture or a narrated/edited video---whatever best conveys what the system does. The video should be self-explanatory to someone who has not seen your presentation.
+\end{enumerate}
+
+\textbf{File naming:} \texttt{Team\_[TeamName]\_FinalProject.zip} containing all of the above.
+
+\section*{Presentation}
+
+Each team will present to the class. The presentation should include:
+
+\begin{itemize}
+    \item \textbf{Slides} --- Cover the use case, your approach, and the key design decisions.
+    \item \textbf{Demo} --- Show your system running live in the simulator. If a live demo is not practical on the day, a pre-recorded video of the simulation is acceptable as a fallback.
+    \item \textbf{Q\&A} --- Be prepared to answer questions about your implementation and design choices.
+\end{itemize}
+
+Presentations should be roughly 10--15 minutes including Q\&A.
+
+\begin{bonusbox}
+Teams that successfully run their proof-of-concept on the \textbf{physical Stretch robot} are exempt from the class presentation. You still need to submit all three written deliverables (code, report, video).
+
+To arrange a session, use the scheduling tool provided by the instructor to book a time slot. Not every team member needs to attend---one or two representatives are sufficient. Multiple teams are welcome to coordinate and share a single session, taking turns with the robot.
+\end{bonusbox}
+
+\section*{Grading}
+
+The project is graded across four equally-weighted areas:
+
+\begin{center}
+\begin{tabular}{llp{8.5cm}}
+\toprule
+\textbf{Area} & \textbf{Weight} & \textbf{What we are looking for} \\
+\midrule
+\textbf{Idea \& Feasibility} & 25\% &
+    Does the use case make sense for this robot? Is the scope appropriate---ambitious enough to be interesting, bounded enough to demonstrate? \\[6pt]
+\textbf{Implementation} & 25\% &
+    Does the demo work? Does the code make reasonable use of the robot's capabilities? Is there some autonomous behavior, or is it purely teleoperated? \\[6pt]
+\textbf{Presentation} & 25\% &
+    Is the pitch clear and convincing? Does the demo (live or recorded) support the argument? Can the team answer questions about their system? \\[6pt]
+\textbf{Video} & 25\% &
+    Does the video clearly show what the system does? Would someone watching it understand the idea without additional explanation? \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{notebox}
+These criteria are intentionally broad. There is no single correct way to build a proof of concept, and grading will take into account the difficulty and ambition of what you attempted relative to what you achieved.
+\end{notebox}
+
+\end{document}

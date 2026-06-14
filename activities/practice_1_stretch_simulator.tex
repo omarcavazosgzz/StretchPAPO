@@ -1,0 +1,271 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{upquote}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    breakatwhitespace=false,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    showstringspaces=false
+}
+
+\title{\textbf{Practice 1 - Setting up the Stretch Robot Simulator}}
+\author{
+    Robotics and Cyber-Physical Systems \\
+    School of Sciences and Engineering \\
+    Tecnol\'ogico de Monterrey
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+The Hello Robot Stretch is a mobile manipulator for research and assistive robotics. This practice introduces the Stretch MuJoCo Digital Twin---a high-fidelity physics simulation for developing robotics algorithms.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Screenshot 2026-03-17 144257.png}
+    \caption{Stretch robot operating in the MuJoCo simulation environment}
+    \label{fig:stretch_sim}
+\end{figure}
+
+\textbf{Objectives:}
+\begin{itemize}
+    \item Install and verify the base simulator
+    \item Install and verify RoboCasa kitchen environments
+    \item Toggle between environments via configuration
+    \item Complete a block stacking challenge using teleoperation
+\end{itemize}
+
+\section{Requirements}
+
+\begin{itemize}
+    \item Windows, macOS, or Linux laptop
+    \item Git
+    \item \texttt{uv} package manager
+    \item Code editor (VS Code recommended)
+    \item \textbf{Optional:} Xbox-compatible gamepad
+    \item 5+ GB free disk space
+\end{itemize}
+
+\section{Setup}
+
+\textbf{Video Tutorial:} \url{https://youtu.be/FLPB3TQcUoI}
+
+\subsection{Install uv Package Manager}
+
+\textbf{Windows:}
+\begin{lstlisting}[language=bash]
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+\end{lstlisting}
+
+\textbf{macOS/Linux:}
+\begin{lstlisting}[language=bash]
+curl -LsSf https://astral.sh/uv/install.sh | sh
+\end{lstlisting}
+
+Restart your terminal after installation.
+
+\subsection{Clone Repository}
+
+\begin{lstlisting}[language=bash]
+git clone https://github.com/SilentSammy/stretch_mujoco_digital_twin --recurse-submodules
+cd stretch_mujoco_digital_twin
+\end{lstlisting}
+
+\textbf{Linux users:} If you get build errors, install:
+\begin{lstlisting}[language=bash]
+sudo apt install build-essential python3-dev linux-headers-$(uname -r)
+\end{lstlisting}
+
+\section{Part 1: Verify Base Simulation}
+
+Run the simulator:
+
+\begin{lstlisting}[language=bash]
+uv run teleop_demo.py
+\end{lstlisting}
+
+You should see:
+\begin{itemize}
+    \item Terminal: \texttt{=== Running on simulation backend ===}
+    \item MuJoCo viewer with Stretch robot
+    \item Two colored blocks (blue box and red cylinder)
+\end{itemize}
+
+\textbf{Important:} Before controlling the robot, click away from the MuJoCo viewer (e.g., click the taskbar or another window). This prevents keyboard inputs from triggering simulator functions. The controls will still work when the window is unfocused.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Screenshot 2026-03-17 145622.png}
+    \caption{Default simulation environment}
+    \label{fig:base_env}
+\end{figure}
+
+Press \textbf{1-5} to cycle through camera views (see Part 4 for details). Press \textbf{Ctrl+C} to exit.
+
+\section{Part 2: Install RoboCasa Environment}
+
+Install RoboCasa dependencies:
+
+\begin{lstlisting}[language=bash]
+uv pip install -e ".[robocasa]"
+uv pip install -e "robocasa@third_party/robocasa"
+uv pip install -e "robosuite@third_party/robosuite"
+uv run third_party/robosuite/robosuite/scripts/setup_macros.py
+uv run third_party/robocasa/robocasa/scripts/setup_macros.py
+uv run third_party/robocasa/robocasa/scripts/download_kitchen_assets.py
+\end{lstlisting}
+
+\textbf{Note:} Asset download is ~5 GB and takes some time.
+
+Verify \texttt{stretch\_toolkit/robocasa\_config.json} has \texttt{"enabled": true}, then run:
+
+\begin{lstlisting}[language=bash]
+uv run teleop_demo.py
+\end{lstlisting}
+
+You should see a kitchen environment with cabinets, counters, and appliances.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Screenshot 2026-03-17 144257.png}
+    \caption{RoboCasa kitchen scene}
+    \label{fig:robocasa_env}
+\end{figure}
+
+\section{Part 3: Disable RoboCasa}
+
+Edit \texttt{stretch\_toolkit/robocasa\_config.json} and set \texttt{"enabled": false}:
+
+\begin{lstlisting}
+{
+  "enabled": false,
+  "task": "PnPCounterToCab",
+  "layout": 0,
+  "style": 0
+}
+\end{lstlisting}
+
+Run \texttt{uv run teleop\_demo.py} again. You should see the simple block environment.
+
+\textbf{Leave RoboCasa disabled for Part 4.}
+
+\section{Part 4: Block Stacking Challenge}
+
+\textbf{Task:} Stack one block on top of the other using teleoperation.
+
+\subsection{Stretch's 9 Degrees of Freedom}
+
+\begin{enumerate}
+    \item Base Translation
+    \item Base Rotation
+    \item Lift
+    \item Arm
+    \item Wrist Yaw
+    \item Wrist Pitch
+    \item Wrist Roll
+    \item Gripper
+    \item Head Pan/Tilt
+\end{enumerate}
+
+\subsection{Keyboard Controls}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Keys} & \textbf{Action} \\
+\hline
+W / S & Base forward/backward \\
+D / A & Base rotate right/left \\
+Z / X & Lift up/down \\
+V / C & Arm extend/retract \\
+M / N & Gripper open/close \\
+L / J & Wrist yaw \\
+U / O & Wrist roll \\
+K / I & Wrist pitch \\
+H & Toggle head/wrist mode \\
+\hline
+\end{tabular}
+\caption{Primary keyboard mappings (see \texttt{teleop\_mappings.json} for gamepad)}
+\end{table}
+
+\subsection{Camera Views}
+
+Press keys \textbf{1--5} to toggle individual camera feeds on or off:
+
+\begin{enumerate}
+    \item Head RGB
+    \item Head Depth
+    \item Wrist RGB
+    \item Wrist Depth
+    \item Head Navigation Cam
+\end{enumerate}
+
+\textbf{Note:} Each active camera reduces simulation performance. Disable unused cameras if the simulation feels slow.
+
+\textbf{Task:} During the block stacking challenge, experiment with at least two different camera views to assist your manipulation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Screenshot 2026-03-17 150511.png}
+    \caption{Target outcome: one block stacked on top of the other}
+    \label{fig:stacked_blocks}
+\end{figure}
+
+\textbf{Tips:} Use different camera angles for better depth perception. Take your time.
+
+\section{Evidence and Submission}
+
+Submit a PDF report (1-2 pages) containing:
+
+\begin{itemize}
+    \item \textbf{Link to a short video:} Move each joint and briefly explain what it does in your own words as it moves.
+    \item Screenshots of the RoboCasa kitchen environment (Part 2) and the stacked blocks result (Part 4).
+    \item A short written description of each of the robot's 9 degrees of freedom and its corresponding control key.
+\end{itemize}
+
+\textbf{File naming:} \texttt{LastName\_FirstName\_Practice1.pdf}
+
+\section{Troubleshooting}
+
+\textbf{Simulator won't start:} Run \texttt{uv sync} then retry
+
+\textbf{Controls not responding:} Click the MuJoCo viewer window to focus it
+
+\textbf{Physics issues:} Restart simulation with Ctrl+C
+
+\subsection{Resources}
+
+\begin{itemize}
+    \item \url{https://github.com/SilentSammy/stretch_mujoco_digital_twin}
+    \item \url{https://mujoco.readthedocs.io/}
+    \item \url{https://hello-robot.com/stretch-3}
+\end{itemize}
+
+\section{Conclusion}
+
+You've installed the Stretch simulator, explored both simple and kitchen environments, and completed a manipulation task. Future practices will cover programmatic control, computer vision, and autonomous planning.
+
+Good luck with the block stacking challenge!
+
+\end{document}
