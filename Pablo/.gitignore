@@ -1,0 +1,6 @@
+# Generados por los scripts (no versionar)
+snaps/
+cache/
+_asset_download.log
+__pycache__/
+*.pyc

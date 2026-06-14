@@ -1,0 +1,179 @@
+================================================================================
+ CONTEXTO DEL PROYECTO — Stretch + RoboCasa: manipulacion por vision
+ (documento de traspaso para continuar en otra sesion/computadora)
+ Branch: Pablo   |   Repo: github.com/omarcavazosgzz/StretchPAPO
+================================================================================
+
+--------------------------------------------------------------------------------
+1) VISION DEL PROYECTO (lo que quiero lograr)
+--------------------------------------------------------------------------------
+Que el robot Stretch, dentro de RoboCasa, abra cajones y agarre objetos para
+llevarlos a un punto de interes (la estufa), usando SOLO informacion de las
+camaras para detectar/ubicar. Ir paso por paso, verificando que cada fase
+funciona antes de avanzar. El Stretch NO debe chocar al moverse.
+
+Fases:
+  Fase 1 : que las camaras sigan/centren el objeto que yo pida.
+           - la camara de la CABEZA busca y se acerca.
+           - luego la camara del BRAZO (muneca) centra, sin que la cabeza pierda el objeto.
+  Fase 2 : agarrar el objeto.
+  Fase 3 : llevarlo cerca de la estufa (u otra zona) + abrir cajones. Anti-colision.
+
+--------------------------------------------------------------------------------
+2) REQUISITOS Y DECISIONES QUE DI EN ESTA SESION
+--------------------------------------------------------------------------------
+- Plataforma: trabajar AHORA en Windows nativo, pero escribir todo PORTABLE para
+  migrar a Ubuntu despues. (Confirmado: Windows nativo SI funciona, ver abajo.)
+- Sacar el proyecto de OneDrive a una ruta local limpia: C:\dev\StretchPAPO
+  (el original en OneDrive quedo como respaldo, identico).
+- Las pruebas deben correr en una cocina RoboCasa SIMPLE (nada raro).
+- La escena de prueba SIEMPRE debe tener: cubo ROJO (para pruebas), HUEVO, minimo
+  4 CAJONES, un TOMATE, y utensilios tipo CUCHILLO y PLATO.
+- Deteccion por VISION. Decision tomada: HIBRIDO.
+    * "oracle" = verdad-de-tierra del simulador (default, 100% confiable en sim).
+    * "yolo"   = YOLO-World sobre RGB, activable por config (para robot real).
+    Se cambia en stretch_toolkit/sim_config.json -> "detector": "oracle" | "yolo".
+- Comandos por NOMBRE: escribir "huevo" agarra/centra el huevo; "cajon_1" abre el
+  cajon 1, etc. (los nombres de objeto ya funcionan; los cajones son Fase 3).
+- Las 2 camaras se usan asi: la CABEZA busca y se acerca; el BRAZO centra sin que
+  la cabeza pierda el objeto.
+- Antes de la camara del brazo: que el Stretch se POSICIONE bien para agarrar SIN
+  CHOCAR (LiDAR). Recordar la posicion del objeto y ir a una pose comoda. Idea mia:
+  ponerse PARALELO al objeto con el brazo hacia el objeto, a distancia segura.
+- Revisar mi codigo y las otras ramas (omar, angel-desarrollo) y mejorar el mio.
+- Subir cambios a mi branch Pablo. Generar este txt de contexto.
+
+--------------------------------------------------------------------------------
+3) ENTORNO Y COMO MONTARLO (Windows, portable a Ubuntu)
+--------------------------------------------------------------------------------
+Herramientas: uv (en C:\Users\<user>\.local\bin) y git (C:\Program Files\Git\cmd),
+ambos en el PATH de usuario. winget disponible.
+
+Montaje (desde C:\dev\StretchPAPO):
+    uv sync
+    uv pip install -e ".[robocasa]"
+    uv pip install -e "robocasa@third_party/robocasa"
+    uv pip install -e "robosuite@third_party/robosuite"
+    uv run third_party/robosuite/robosuite/scripts/setup_macros.py
+    uv run third_party/robocasa/robocasa/scripts/setup_macros.py
+    "y" | uv run third_party/robocasa/robocasa/scripts/download_kitchen_assets.py   # ~5-8GB
+(submodulos son FORKS: hello-binit/robocasa y SilentSammy/robosuite; si faltan:
+    git submodule update --init --recursive )
+
+Correr scripts:  uv run Pablo/<script>.py
+HALLAZGO: en Windows NO usar MUJOCO_GL=egl (eso es Linux). El backend GL default
+de Windows renderiza las camaras bien (~22 FPS). En Ubuntu se puede exportar
+MUJOCO_GL=egl para headless.
+
+--------------------------------------------------------------------------------
+4) ARQUITECTURA / ARCHIVOS (en Pablo/)
+--------------------------------------------------------------------------------
+scene.py        : genera la cocina RoboCasa (layout 0) e INYECTA los objetos
+                  garantizados (cubo_rojo, huevo, tomate, cuchillo, plato) en
+                  posiciones fijas; limpia el mostrador (quita accesorios que
+                  tapaban). build_pablo_kitchen(), inject_objaverse_object(), etc.
+detection.py    : capa de deteccion por nombre. OracleDetector (proyeccion 3D->2D
+                  exacta, ~2px de error) + YoloDetector (stub YOLO-World). Elige
+                  backend por sim_config.json. resolve_name() mapea alias ES/EN.
+control.py      : PosServo = control por POSICION (move_to_many). Necesario porque
+                  el control por velocidad del toolkit NO movia 2 juntas a la vez
+                  (bug, ver seccion 6).
+sim_setup.py    : start_kitchen() arranca el toolkit (controller) con la cocina
+                  custom via monkeypatch a model_generation_wizard. Headless o visor.
+phase1_lib.py   : aim_head() = Fase 1a. Orienta base -> se acerca (freno LiDAR) ->
+                  barre la cabeza hasta ver el objeto -> centra con servo visual de
+                  Jacobiano aprendido en linea (Broyden).
+fase1.py        : entry de Fase 1a. "uv run Pablo/fase1.py huevo [ver]".
+positioning.py  : Fase 1.5. remember_object() (recuerda pose del objeto),
+                  compute_grasp_xy(), goto_pose() (navega el pasillo con freno
+                  LiDAR), face_arm_at_object() (gira para que el brazo apunte al
+                  objeto), stop_base() (frena del todo antes de girar).
+posicionar.py   : entry de posicionamiento. "uv run Pablo/posicionar.py huevo [ver]".
+Tests/diag      : test_kitchen_load.py, test_scene_sim.py, test_detection.py,
+                  ver_cocina.py (visor), _diag_kin.py, _diag_scene.py, etc.
+
+Cambios FUERA de Pablo/ (en el sim/toolkit, portables):
+  stretch_mujoco/stretch_mujoco_simulator.py : + move_to_many() y move_by_many()
+                  (control multi-junta atomico; arregla el bug de 2 juntas).
+  stretch_mujoco/mujoco_server.py            : pull_status ahora expone camera_poses
+                  (pose-mundo de cada camara) para la proyeccion del oraculo.
+  stretch_mujoco/datamodels/status_stretch_joints.py : + campo camera_poses.
+  stretch_toolkit/sim.py        : _set_joint_velocities ahora usa move_by_many (batch).
+  stretch_toolkit/__init__.py   : NO aplica start_translation cuando hay RoboCasa
+                  (si no, el robot aparecia lejos del mostrador).
+  stretch_toolkit/sim_config.json : + "detector":"oracle"; robocasa.enabled=true.
+
+--------------------------------------------------------------------------------
+5) ESTADO: HECHO/VERIFICADO  vs  PENDIENTE
+--------------------------------------------------------------------------------
+HECHO Y VERIFICADO:
+  [x] Entorno Windows completo (uv/git/venv/robocasa/assets) y validado.
+  [x] MuJoCo renderiza camaras offscreen en Windows (~22 FPS). Cocina RoboCasa
+      carga y renderiza (4 camaras).
+  [x] Escena custom con 5 objetos garantizados, estables, mostrador limpio.
+  [x] Deteccion oraculo verificada (~2 px vs deteccion por color del cubo rojo).
+  [x] FIX bug multi-junta del sim (move_to_many) + PosServo.
+  [x] Fase 1a (cabeza): buscar + acercarse + CENTRAR. PASS (huevo err 0.045,
+      cubo_rojo 0.036). Comando: uv run Pablo/fase1.py <objeto> [ver]
+  [x] Fase 1.5 (posicionamiento de agarre): recuerda el objeto, navega SIN CHOCAR
+      (freno LiDAR), se pone paralelo, brazo hacia el objeto, y la CAMARA DEL BRAZO
+      ya ve el objeto. Comando: uv run Pablo/posicionar.py <objeto> [ver]
+  [x] Revisadas las ramas: omar = igual a main (sin aportes); angel-desarrollo =
+      tiene grab_demo/tutoriales (ideas para Fase 2), pero metio robocasa como
+      archivos (no se mergeo).
+
+PENDIENTE:
+  [ ] Fase 1b: la camara del BRAZO centra el objeto (mover lift/arm/wrist) mientras
+      la cabeza no lo pierde. (Reusar PosServo + servo visual Broyden; el objeto YA
+      queda en la camara del brazo tras posicionar.)
+  [ ] Fase 2: agarrar (bajar gripper sobre el objeto con profundidad-wrist, cerrar).
+  [ ] Fase 3: llevar a la estufa/otra zona + abrir cajones (hay 5 joints "slide" =
+      cajones en layout 0). Anti-colision con LiDAR.
+  [ ] (Opcional) YOLO real (cambiar "detector":"yolo") + auto-etiquetado con el oraculo.
+
+--------------------------------------------------------------------------------
+6) HALLAZGOS TECNICOS CLAVE (para no repetir errores)
+--------------------------------------------------------------------------------
+- Windows: NO egl. Backend GL default funciona. El sim usa multiprocessing 'spawn',
+  asi que TODO codigo ejecutable va dentro de if __name__ == "__main__".
+- BUG IMPORTANTE (arreglado): controller.set_velocities NO movia 2+ juntas a la vez
+  (move_by relativo se re-aplica cada tick de fisica y se cancelan). Solucion:
+  control por POSICION via sim.move_to_many (Pablo/control.py PosServo). Para la
+  BASE si sirve controller.set_velocities({base_forward, base_counterclockwise}).
+- Camara de la CABEZA (d435i) se entrega ROTADA 90 (portrait, np.rot90(-1)). En el
+  servo de imagen: PAN controla ey (eje alto), TILT controla ex (eje angosto). El
+  centrado fino usa Jacobiano 2x2 aprendido en linea (Broyden) por el acoplamiento.
+- La cabeza es LENTA (~0.3 rad/s); usar control paso+espera, no velocidad continua.
+- La BASE: gira lento y DERIVA al girar (la velocidad tiene rampa de aceleracion,
+  no para de golpe). Hay que frenar del todo (stop_base) antes de girar.
+- Cinematica Stretch: el BRAZO se extiende LATERAL hacia base -Y. Gripper ~0.34 m de
+  la base aun retraido. LiDAR: frente = indice 94 (360 rayos).
+- Geometria cocina layout0/style0: mostrador corre en x; objetos en y~-0.35; pasillo
+  (piso) en y mas baja; estufa en x>2.8; sink a la izquierda. RoboCasa RANDOMIZA la
+  pose de spawn del robot (a veces ~2m del mostrador) -> por eso hay que acercarse.
+
+--------------------------------------------------------------------------------
+7) COMO CORRER LAS COSAS
+--------------------------------------------------------------------------------
+(desde C:\dev\StretchPAPO; abre PowerShell nueva para tener uv/git en el PATH)
+
+  uv run Pablo/fase1.py huevo            # Fase 1a headless (guarda snaps/fase1_*.png)
+  uv run Pablo/fase1.py huevo ver        # Fase 1a con VENTANA del visor
+  uv run Pablo/posicionar.py huevo       # Posicionamiento de agarre (headless)
+  uv run Pablo/posicionar.py huevo ver   # Posicionamiento con VENTANA
+  objetos validos: huevo, tomate, cubo_rojo, cuchillo, plato
+
+  uv run Pablo/ver_cocina.py             # solo ver la cocina con los objetos
+  uv run Pablo/test_scene_sim.py         # escena en sim, guarda snaps
+
+Snapshots en Pablo/snaps/. En modo 'ver' la ventana queda abierta al final
+(cierra con la X o Ctrl+C).
+
+--------------------------------------------------------------------------------
+8) PROXIMO PASO SUGERIDO
+--------------------------------------------------------------------------------
+Fase 1b: con el robot ya posicionado (objeto en la camara del brazo), hacer servo
+visual de la muñeca (lift/arm/wrist_pitch/wrist_yaw) para centrar el objeto en la
+camara del brazo, manteniendo la cabeza apuntando (no perderlo). Luego Fase 2
+(agarre): bajar el gripper sobre el objeto usando profundidad de la wrist y cerrar.
+================================================================================

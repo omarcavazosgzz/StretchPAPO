@@ -516,6 +516,51 @@ class StretchMujocoSimulator:
             self.data_proxies.set_command(command)
 
     @require_connection
+    def move_by_many(self, moves: dict) -> None:
+        """Move several actuators by relative amounts in ONE atomic command.
+
+        Calling move_by() once per joint races against the simulator process on
+        the shared command proxy (get/modify/set is not atomic across processes),
+        so commanding two joints in quick succession can drop both. Batching all
+        joints into a single get/set fixes multi-joint (e.g. dual visual servoing).
+
+        Args:
+            moves: dict of {actuator (str | Actuators): relative pos delta}.
+        """
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+            for actuator, pos in moves.items():
+                if isinstance(actuator, str):
+                    actuator = Actuators[actuator]
+                command.set_move_by(CommandMove(actuator_name=actuator.name, pos=pos, trigger=True))
+            self.data_proxies.set_command(command)
+
+    @require_connection
+    def move_to_many(self, targets: dict) -> None:
+        """Move several actuators to ABSOLUTE positions in ONE atomic command.
+
+        Absolute targets are idempotent when the server re-applies the command
+        each physics tick (ctrl = pos), so this gives clean multi-joint position
+        control without the runaway/interference of repeated relative move_by.
+
+        Args:
+            targets: dict of {actuator (str | Actuators): absolute position}.
+
+        Note: clears any stale move_to/move_by entries first. Lingering relative
+        move_by commands re-apply every physics tick and fight absolute targets
+        (this is what dropped multi-joint motion), so we replace them outright.
+        """
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+            command.move_to = {}
+            command.move_by = {}
+            for actuator, pos in targets.items():
+                if isinstance(actuator, str):
+                    actuator = Actuators[actuator]
+                command.set_move_to(CommandMove(actuator_name=actuator.name, pos=pos, trigger=True))
+            self.data_proxies.set_command(command)
+
+    @require_connection
     def set_base_velocity(self, v_linear: float, omega: float) -> None:
         """
         Set the base velocity of the robot

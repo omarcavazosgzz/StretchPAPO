@@ -170,43 +170,51 @@ class SimulatedJointController(JointController):
     
     def _set_joint_velocities(self, vel_dict, dt):
         """Set joint velocities via move_by with acceleration smoothing.
-        
+
+        All significant joints are sent in ONE atomic batch (move_by_many) to
+        avoid the cross-process command race that drops commands when several
+        joints are moved together (e.g. dual visual servoing).
+
         Args:
             vel_dict: Dictionary of normalized velocities
             dt: Time delta since last update (seconds)
         """
+        moves = {}
         for joint_name, max_speed in self.joint_max_speeds.items():
             # Skip base movements - they're handled by _set_base_velocities
             if joint_name in ['base_forward', 'base_counterclockwise']:
                 continue
-            
+
             # Get target velocity
             normalized_vel = vel_dict.get(joint_name, 0.0)
             target_vel = normalized_vel * max_speed
-            
+
             # Get current velocity for this joint (initialize if needed)
             if joint_name not in self.current_joint_vels:
                 self.current_joint_vels[joint_name] = 0.0
-            
+
             current_vel = self.current_joint_vels[joint_name]
-            
+
             # Apply acceleration limit
             max_accel = self.joint_max_accels[joint_name]
             max_delta = max_accel * dt
-            
+
             vel_diff = target_vel - current_vel
             if abs(vel_diff) > max_delta:
                 current_vel += max_delta if vel_diff > 0 else -max_delta
             else:
                 current_vel = target_vel
-            
+
             # Store updated velocity
             self.current_joint_vels[joint_name] = current_vel
-            
-            # Apply movement if velocity is significant
+
+            # Collect movement if velocity is significant
             if abs(current_vel) > 0.001:  # Small deadzone to avoid jitter
                 actuator = self.joint_actuator_map[joint_name]
-                self.sim.move_by(actuator, current_vel)
+                moves[actuator] = current_vel
+
+        if moves:
+            self.sim.move_by_many(moves)
     
     def set_velocities(self, vel_dict):
         """Set normalized joint velocities in simulation with acceleration smoothing.

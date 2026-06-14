@@ -1,0 +1,161 @@
+"""
+Posicionamiento del Stretch para agarrar (Fase 1.5).
+
+Idea: recordamos la posicion mundo del objeto (oraculo; en robot real seria por
+profundidad de la camara de la cabeza) y calculamos una POSE DE AGARRE comoda:
+el Stretch tiene el brazo lateral (se extiende hacia base -Y), asi que la mejor
+pose es PARALELO al mostrador, en el pasillo, con el lado del brazo hacia el
+objeto, a una distancia donde el brazo alcanza. Luego navegamos ahi por el
+pasillo ABIERTO (no hacia el mostrador) con freno LiDAR -> no choca.
+
+Datos calibrados (Pablo/_diag_kin.py):
+  - El brazo se extiende hacia base -Y (lateral). Gripper ~0.34 m de la base aun
+    retraido; alcanza mas con arm_out.
+  - LiDAR: frente = indice 94 (base +x_local). 360 rayos.
+"""
+import time
+import numpy as np
+
+LIDAR_FRONT = 94          # indice del rayo que apunta al frente de la base
+GRIPPER_HOME_OFFSET = 0.34
+DT = 1 / 30
+BASE_YAW_SIGN = -1.0      # +base_counterclockwise gira CW en este toolkit
+
+
+def _wrap(a):
+    return (a + np.pi) % (2 * np.pi) - np.pi
+
+
+def remember_object(sim, body):
+    """Recuerda la posicion mundo del objeto (x,y,z). Oraculo (sim). En robot
+    real seria back-projection de la profundidad de la camara de la cabeza."""
+    o = sim.pull_status().object_poses.get(body)
+    return None if o is None else np.array(o[:3])
+
+
+def compute_grasp_xy(obj_xy, robot_xy, grasp_dist=0.55):
+    """Punto en el PASILLO a 'grasp_dist' del objeto, del lado del robot (el
+    mostrador corre en x, el pasillo esta en y mas baja). Returns (tx, ty)."""
+    ox, oy = float(obj_xy[0]), float(obj_xy[1])
+    side = -1.0 if robot_xy[1] < oy else 1.0
+    return ox, oy + side * grasp_dist
+
+
+def face_arm_at_object(controller, obj_xy, log=print, iters=4):
+    """Gira la base para que el BRAZO (sale hacia base -Y_local) apunte al objeto.
+    ITERA porque la base DERIVA al girar (recalcula el heading desde la pose real
+    en cada vuelta hasta converger). -Y_local=u(dir base->obj) => th=atan2(ux,-uy)."""
+    ttheta = None
+    for _ in range(iters):
+        bx, by, th = _base_pose(controller)
+        ux, uy = obj_xy[0] - bx, obj_xy[1] - by
+        n = np.hypot(ux, uy)
+        if n < 1e-6:
+            break
+        ttheta = float(np.arctan2(ux / n, -uy / n))
+        if abs(_wrap(ttheta - th)) < 0.06:
+            break
+        turn_to(controller, ttheta, log=log)
+    log(f"[pos] brazo apuntando al objeto (heading={np.degrees(ttheta):.0f}deg)")
+    return ttheta
+
+
+def lidar_front_min(controller, half_cone=25, front=LIDAR_FRONT):
+    """Distancia minima en el cono frontal de la base."""
+    r = controller.get_lidar_ranges()
+    if r is None:
+        return np.inf
+    r = np.asarray(r, float)
+    n = len(r)
+    idx = [(front + d) % n for d in range(-half_cone, half_cone + 1)]
+    v = r[idx]
+    v = v[np.isfinite(v)]
+    return float(v.min()) if v.size else np.inf
+
+
+def _base_pose(controller):
+    s = controller.get_state()
+    return s["base_x"], s["base_y"], s["base_theta"]
+
+
+def stop_base(controller, timeout=4.0):
+    """Frena la base y ESPERA a que realmente se detenga (la velocidad tiene rampa
+    de aceleracion, asi que no para de golpe -> si no esperamos, deriva al girar)."""
+    prev = None
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        controller.set_velocities({"base_forward": 0.0, "base_counterclockwise": 0.0})
+        bx, by, bth = _base_pose(controller)
+        if prev is not None and np.hypot(bx - prev[0], by - prev[1]) < 0.003 \
+                and abs(_wrap(bth - prev[2])) < 0.006:
+            break
+        prev = (bx, by, bth)
+        time.sleep(0.1)
+
+
+def turn_to(controller, target_theta, tol=0.05, timeout=18.0, log=None):
+    """Gira la base a un heading absoluto. Proporcional (frena cerca del objetivo
+    para no oscilar/derivar); timeout amplio porque la base gira lento."""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        _, _, th = _base_pose(controller)
+        herr = _wrap(target_theta - th)
+        if abs(herr) < tol:
+            break
+        # base_forward=0 EXPLICITO: nada de avance mientras gira (evita deriva)
+        controller.set_velocities({"base_counterclockwise": float(np.clip(BASE_YAW_SIGN * 1.5 * herr, -1, 1)),
+                                   "base_forward": 0.0})
+        time.sleep(DT)
+    stop_base(controller, timeout=2.0)
+    return abs(_wrap(target_theta - _base_pose(controller)[2])) < tol * 2.5
+
+
+def goto_pose(controller, tx, ty, ttheta, stop_dist=0.35, slow_dist=0.7,
+              reach_tol=0.10, max_time=25.0, log=print):
+    """Navega la base a (tx,ty,ttheta): gira hacia el waypoint -> avanza con freno
+    LiDAR -> gira a la orientacion final. El waypoint esta en el pasillo abierto,
+    asi que no se mete al mostrador. Devuelve dict con resultado."""
+    bx, by, bth = _base_pose(controller)
+    log(f"[pos] navegando al punto ({tx:.2f},{ty:.2f}) desde ({bx:.2f},{by:.2f})")
+
+    # 1) girar hacia el waypoint
+    turn_to(controller, np.arctan2(ty - by, tx - bx), log=log)
+
+    # 2) avanzar con freno LiDAR
+    t0 = time.time()
+    blocked = False
+    last = 0
+    while time.time() - t0 < max_time:
+        bx, by, bth = _base_pose(controller)
+        dist = float(np.hypot(tx - bx, ty - by))
+        if dist <= reach_tol:
+            break
+        desired = np.arctan2(ty - by, tx - bx)
+        herr = _wrap(desired - bth)
+        front = lidar_front_min(controller)
+        if abs(herr) > 0.3:
+            controller.set_velocities({"base_counterclockwise": float(np.clip(BASE_YAW_SIGN * 1.0 * herr, -0.6, 0.6)),
+                                       "base_forward": 0.0})
+        else:
+            if front < stop_dist:
+                controller.set_velocities({"base_forward": 0.0, "base_counterclockwise": 0.0})
+                blocked = True
+                log(f"[pos] obstaculo al frente (LiDAR {front:.2f}m) -> freno")
+                break
+            fwd = 0.18 if front < slow_dist else float(np.clip(0.8 * dist, 0.12, 0.55))
+            controller.set_velocities({"base_forward": fwd,
+                                       "base_counterclockwise": float(np.clip(BASE_YAW_SIGN * 0.8 * herr, -0.3, 0.3))})
+        if time.time() - last > 1.0:
+            log(f"[pos]   nav dist={dist:.2f} herr={np.degrees(herr):+.0f}deg front_lidar={front:.2f}")
+            last = time.time()
+        time.sleep(DT)
+    stop_base(controller)        # frenar del todo antes de cualquier giro (evita deriva)
+
+    # 3) (opcional) girar a una orientacion final
+    if ttheta is not None:
+        turn_to(controller, ttheta, log=log)
+
+    bx, by, bth = _base_pose(controller)
+    dist = float(np.hypot(tx - bx, ty - by))
+    log(f"[pos] llegada a ({bx:.2f},{by:.2f},th={np.degrees(bth):.0f}deg) dist_al_objetivo={dist:.2f}m blocked={blocked}")
+    return {"reached": dist <= reach_tol + 0.15, "blocked": blocked, "final": (bx, by, bth), "dist": dist}

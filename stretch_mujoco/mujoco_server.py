@@ -604,6 +604,18 @@ class MujocoServer:
                     object_poses[body_name] = tuple(float(v) for v in self.mjdata.qpos[qadr:qadr + 7])
         new_status.object_poses = object_poses
 
+        # Pose-mundo de cada camara (cam_xpos + cam_xmat). Permite proyectar puntos
+        # 3D a pixel en el proceso principal (deteccion por oraculo). Costo IPC bajo.
+        camera_poses = {}
+        for i in range(self.mjmodel.ncam):
+            cam_name = mujoco.mj_id2name(self.mjmodel, mujoco.mjtObj.mjOBJ_CAMERA, i)
+            if cam_name:
+                camera_poses[cam_name] = {
+                    "pos": [float(v) for v in self.mjdata.cam_xpos[i]],
+                    "xmat": [float(v) for v in self.mjdata.cam_xmat[i]],
+                }
+        new_status.camera_poses = camera_poses
+
         self.data_proxies.set_status(new_status)
 
     def _to_real_gripper_range(self, pos: float) -> float:

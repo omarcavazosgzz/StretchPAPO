@@ -38,6 +38,7 @@ class StatusStretchJoints:
     wrist_roll: PositionVelocity
     gripper: PositionVelocity
     object_poses: dict = field(default_factory=dict)  # body_name -> (x, y, z, qw, qx, qy, qz)
+    camera_poses: dict = field(default_factory=dict)   # mjcf_cam_name -> {"pos":[3], "xmat":[9]} (world pose)
 
     def __getitem__(self, name:str):
         """For backward compatibility: allows access with the square brackets []"""

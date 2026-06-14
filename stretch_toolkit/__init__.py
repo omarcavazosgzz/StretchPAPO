@@ -139,8 +139,11 @@ if not USE_PHYSICAL:
             # Prepare simulator initialization kwargs
             sim_kwargs = {'cameras_to_use': list(preregistered_cameras)}
             
+            # start_translation (de sim_config) es para el entorno de bloques. En
+            # RoboCasa la pose del robot ya viene del modelo (fixture de la cocina),
+            # asi que NO la sobreescribimos o el robot aparece lejos del mostrador.
             start_translation = _full_config.get('start_translation', None)
-            if start_translation is not None:
+            if start_translation is not None and not robocasa_config:
                 sim_kwargs['start_translation'] = start_translation
             
             if robocasa_config:
