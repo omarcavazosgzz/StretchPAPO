@@ -27,10 +27,49 @@ def _wrap(a):
 
 
 def remember_object(sim, body):
-    """Recuerda la posicion mundo del objeto (x,y,z). Oraculo (sim). En robot
-    real seria back-projection de la profundidad de la camara de la cabeza."""
+    """Verdad-de-tierra del sim (oraculo). Solo para comparar/verificar."""
     o = sim.pull_status().object_poses.get(body)
     return None if o is None else np.array(o[:3])
+
+
+def localize_with_head_camera(sim, det, model, body, head_cam, head_depth_cam,
+                              head_mjcf="d435i_camera_rgb", log=print):
+    """ESTIMA la posicion 3D del objeto USANDO LA CAMARA: toma el pixel del objeto
+    (detector) en la camara de la cabeza, lee la PROFUNDIDAD en ese pixel y
+    back-proyecta a mundo con la pose de la camara. Esto es lo que se "guarda".
+    El objeto debe estar visible/centrado en la cabeza (correr Fase 1a antes).
+
+    Returns world (x,y,z) o None.
+    """
+    from detection import _CamModel
+    cm = _CamModel(head_cam, model)             # W,H,f,cx,cy nativos del render
+    d = det.detect(head_cam, body)
+    if d is None or not d.in_frame:
+        return None
+    depth = sim.pull_camera_data().get_all(use_depth_color_map=False).get(head_depth_cam)
+    if depth is None:
+        return None
+    Hd, Wd = depth.shape[:2]
+    ix, iy = int(round(d.centroid[0])), int(round(d.centroid[1]))
+    y0, y1 = max(0, iy - 3), min(Hd, iy + 4)
+    x0, x1 = max(0, ix - 3), min(Wd, ix + 4)
+    patch = depth[y0:y1, x0:x1].astype(float)
+    valid = patch[(patch > 0.05) & np.isfinite(patch)]
+    if valid.size < 3:
+        return None
+    z = float(np.median(valid))                 # profundidad (m) al objeto
+    # pixel MOSTRADO -> pixel NATIVO (head rota np.rot90(-1)): disp_x=H_nat-1-v, disp_y=u
+    u = float(d.centroid[1])
+    v = float((cm.H - 1) - d.centroid[0])
+    Xc = (u - cm.cx) * z / cm.f
+    Yc = -(v - cm.cy) * z / cm.f
+    Zc = -z                                     # MuJoCo mira por -z
+    cam = sim.pull_status().camera_poses.get(head_mjcf)
+    if cam is None:
+        return None
+    R = np.array(cam["xmat"]).reshape(3, 3)
+    world = np.array(cam["pos"]) + R @ np.array([Xc, Yc, Zc])
+    return world
 
 
 def compute_grasp_xy(obj_xy, robot_xy, grasp_dist=0.55):
@@ -58,6 +97,50 @@ def face_arm_at_object(controller, obj_xy, log=print, iters=4):
         turn_to(controller, ttheta, log=log)
     log(f"[pos] brazo apuntando al objeto (heading={np.degrees(ttheta):.0f}deg)")
     return ttheta
+
+
+def drive_forward(controller, dist, speed=0.3, max_time=6.0, brake_lidar=True):
+    """Avanza (o retrocede si dist<0) ~dist metros, con freno LiDAR al frente."""
+    b0 = np.array(_base_pose(controller)[:2])
+    sign = 1.0 if dist >= 0 else -1.0
+    t0 = time.time()
+    while time.time() - t0 < max_time:
+        cur = np.array(_base_pose(controller)[:2])
+        if np.hypot(*(cur - b0)) >= abs(dist):
+            break
+        if brake_lidar and sign > 0 and lidar_front_min(controller) < 0.30:
+            break
+        controller.set_velocities({"base_forward": sign * speed, "base_counterclockwise": 0.0})
+        time.sleep(DT)
+    stop_base(controller)
+
+
+def coarse_align_gripper(controller, sim, servo, obj_xy, iters=4, log=print):
+    """Pone el GRIPPER sobre el objeto usando posiciones 3D (objeto localizado por
+    camara + pose de la muneca). Ajusta arm_out (lateral, -Y_local) y avance de base
+    (x_local). Itera hasta quedar alineado. Returns offset final (m)."""
+    off_mag = 9.0
+    for _ in range(iters):
+        w = np.array(sim.pull_status().camera_poses["d405_rgb"]["pos"])[:2]
+        bx, by, th = _base_pose(controller)
+        xloc = np.array([np.cos(th), np.sin(th)])
+        ymloc = np.array([np.sin(th), -np.cos(th)])     # direccion del brazo
+        off = np.array(obj_xy) - w
+        off_mag = float(np.hypot(*off))
+        if off_mag < 0.04:
+            break
+        d_arm = float(off @ ymloc)
+        d_fwd = float(off @ xloc)
+        cur_arm = controller.get_state()["arm_out"]
+        new_arm = float(np.clip(cur_arm + d_arm, 0.0, 0.5))
+        servo.move_to({"arm_out": new_arm})
+        t = time.time()
+        while time.time() - t < 4 and abs(controller.get_state()["arm_out"] - new_arm) > 0.02:
+            servo.hold(); time.sleep(DT)
+        if abs(d_fwd) > 0.03:
+            drive_forward(controller, d_fwd)
+        log(f"[pos]   alineando gripper: offset={off_mag:.2f}m (d_arm={d_arm:+.2f} d_fwd={d_fwd:+.2f})")
+    return off_mag
 
 
 def lidar_front_min(controller, half_cone=25, front=LIDAR_FRONT):
