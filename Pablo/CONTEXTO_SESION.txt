@@ -2,9 +2,11 @@
  CONTEXTO DEL PROYECTO — Stretch + RoboCasa: manipulacion por vision
  (documento de traspaso para continuar en otra sesion/computadora)
  Branch: Pablo   |   Repo: github.com/omarcavazosgzz/StretchPAPO
- Ultima actualizacion (esta sesion): base FIX (ya no se congela), acercamiento
- PARALELO con esquive, agarre REESTRUCTURADO (lateral + desde-arriba) con
- alineacion por centro-de-agarre (cinematica) + objeto por camara.
+ Ultima actualizacion (esta sesion): base FIX (ya no se congela), nav gira-primero,
+ agarre LATERAL "entrar recto" (lo que pidio el usuario), centro de agarre por
+ CINEMATICA pura (get_state, robusto), altura del brazo = altura del objeto/mesa.
+ DONDE ME QUEDE: geometria del agarre SOLIDA pero el CIERRE no atrapa el cubo
+ (los dedos cierran sin tocarlo) -> ver seccion 5 "DONDE ME QUEDE".
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -140,41 +142,52 @@ HECHO Y VERIFICADO:
       PISO MINIMO decisivo (giro >=0.45, avance >=0.35) para vencer la friccion, y se
       frena por distancia para no sobrepasar. Verificado 4/4 corridas: la nav llega
       consistente, sin congelarse.
-  [x] AGARRE REESTRUCTURADO (sin choques ni barridos):
-      - Lateral: ya no choca (baja RECOGIDO sobre el pasillo y extiende; cierra por
-        profundidad central de la muneca, sin depender del RGB de la muneca).
-      - Desde arriba: lleva el CENTRO DE AGARRE (cinematica, link_grasp_center via la
-        pose FRESCA de la camara d405 + offset calibrado) SOBRE el objeto. Geometria
-        RESUELTA: en buenas corridas el centro de agarre queda a radial 4 mm / a-lo-largo
-        11 mm / dz 29 mm del objeto, y el huevo se levanta. Lecturas basura de pose
-        (pull_status a veces stale) FILTRADAS con un guard.
+  [x] AGARRE LATERAL "ENTRAR RECTO" (lo que pidio el usuario), en grasp_lib.py
+      _grasp_lateral (metodo DEFAULT). Secuencia:
+      1) muneca HORIZONTAL (los dedos apuntan al frente = entrar recto).
+      2) BAJAR el CENTRO DE AGARRE a la ALTURA DEL OBJETO (= altura de la mesa+objeto),
+         estando recogido sobre el pasillo (sin chocar).
+      3) EXTENDER arm_out (recto) hasta SOBREPASAR ~3 cm el objeto -> el objeto queda
+         ENTRE los dedos (no en la punta).
+      4) AFINAR a-lo-largo con la CAMARA DEL BRAZO via wrist_yaw (junta precisa, no la
+         base): centrar ex de la wrist cam alinea el objeto con la abertura de los dedos.
+      5) CERRAR firme (gripper_open -0.35) y LEVANTAR; verifica que subio.
+  [x] CENTRO DE AGARRE por CINEMATICA PURA (get_state: base + lift_up + arm_out), NO por
+      la pose de la camara d405 (que llegaba STALE por la concurrencia del pull_status y
+      daba lecturas BASURA, radial 0.8 / dz 0.5). Constantes calibradas con
+      _diag_gripper.py: radial_desde_base = 0.415+arm_out (lateral) / 0.139+arm_out (top);
+      z = lift_up+0.112 (lateral) / lift_up-0.133 (top). Resultado: geometria SOLIDA y
+      CONSISTENTE (radial ~-0.01 sobrepasado, dz ~-0.004 a la altura, sin basura).
+  [x] ALTURA DEL BRAZO = ALTURA DEL OBJETO/MESA (peticion del usuario): el lift se fija
+      para que el CENTRO DE AGARRE quede a obj_z (localizado por la camara). Verificado
+      dz ~-0.004 (centro de agarre a la altura del objeto).
+  [x] NAV gira-primero: nav_to_parallel ya NO avanza mientras gira (si |herr|>11deg gira
+      en el lugar); antes el avance empujaba contra el mostrador y la base se congelaba.
 
-LIMITACION ACTUAL (lo unico que impide un agarre 100% confiable):
-  [!] EJE A LO LARGO DEL MOSTRADOR. Poner el gripper sobre el objeto necesita 2 ejes:
-      RADIAL (arm_out, PRECISO ~1 cm) y A-LO-LARGO del mostrador. El eje a-lo-largo SOLO
-      lo puede dar la BASE (el brazo solo telescopia radial), y la base del sim NO hace
-      ajuste FINO: con comando chico se CONGELA (friccion) y con comando decisivo
-      SOBREPASA, y al girar/trasladar DERIVA (corrompe la geometria si se mueve con el
-      brazo fuera -> ademas BARRE y tira los objetos del mostrador). face_arm (giro en
-      sitio) deja un residuo a-lo-largo VARIABLE ~1-9 cm. Cuando el residuo es < ~4 cm
-      el objeto entra en el span de los dedos (~9 cm) y se agarra; cuando es ~9 cm,
-      queda fuera y falla. => El agarre funciona de forma INTERMITENTE, limitado por la
-      PRECISION DE LA BASE del sim (no por la vision ni por la cinematica del brazo).
-
-  Nota geometrica importante: un agarre PURAMENTE lateral (dedos colgando, brazo
-  horizontal a la altura del objeto) CHOCA contra el mostrador porque los objetos
-  sobresalen poco (~4 cm) y los dedos (~17 cm) golpean la superficie. Por eso, para
-  objetos sobre superficie plana, el metodo DESDE ARRIBA es el adecuado; el lateral
-  encaja mejor para objetos que sobresalen / al borde.
+DONDE ME QUEDE (lo unico que falta para cerrar el agarre lateral):
+  [!] El CIERRE no atrapa el cubo: la geometria queda PERFECTA (cubo entre los dedos,
+      radial -0.01, dz -0.004, a-lo-largo 0.02-0.06, ex centrado por wrist_yaw) pero al
+      cerrar el cubo NO se mueve nada (objeto z 0.94->0.94) -> los dedos cierran SIN
+      tocar el cubo. Falta entender por que: revisar la captura Pablo/snaps/f2_post_wrist
+      (en la ultima corrida el gripper miraba a la pared, el cubo no se ve claramente
+      entre los dedos). Hipotesis a checar:
+        - el plano de cierre real de los dedos no coincide con link_grasp_center (offset
+          z o radial del PUNTO DE CIERRE distinto del centro calibrado);
+        - el objeto sobresale poco y el centro de agarre (a obj_z) deja los dedos un poco
+          altos/bajos respecto a la parte agarrable;
+        - el cubo es pequeno y el residuo a-lo-largo (2-6 cm) lo deja al borde de la
+          abertura -> empujar wrist_yaw mas / cerrar mas / verificar el span real abierto.
+      SIGUIENTE PASO CONCRETO: capturar wrist+depth justo ANTES de cerrar y medir donde
+      caen los dedos vs el cubo (en pixeles y en profundidad); ajustar el offset de cierre
+      (z y/o radial) o el span de apertura. Probar tambien con cubo_rojo en modo 'ver'.
 
 PENDIENTE:
-  [ ] Hacer el eje a-lo-largo CONFIABLE. Opciones: (a) servo de base por ODOMETRIA fino
-      con pulsos calibrados + re-face tras la deriva (RECOGIDO+ALTO para no barrer);
-      (b) reducir la VARIANZA de face_arm; (c) en hardware real / WSL la base puede ser
-      mas precisa y el problema desaparece.
+  [ ] Cerrar el agarre lateral (ver "DONDE ME QUEDE").
   [ ] Fase 3: llevar a la estufa + abrir cajones (hay 5 joints "slide" = cajones en
       layout 0). Subir brazo antes de rotar; anti-colision LiDAR.
   [ ] (Opcional) YOLO real ("detector":"yolo") + auto-etiquetado con el oraculo.
+  Nota: el metodo "top" (desde arriba) sigue disponible (fase2.py huevo top) pero el
+  usuario pidio EXPLICITAMENTE el lateral "entrar recto", que es el default.
 
 --------------------------------------------------------------------------------
 6) HALLAZGOS TECNICOS CLAVE

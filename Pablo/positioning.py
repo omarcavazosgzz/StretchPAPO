@@ -122,22 +122,23 @@ def nav_to_parallel(controller, sim, obj_xy, standoff=0.6, max_time=35, log=prin
             controller.set_velocities({"base_counterclockwise": BASE_YAW_SIGN * 0.7 * steer,
                                        "base_forward": 0.06})
             mode = "ESQUIVA"
-        else:
-            # COMBINADO con magnitudes MINIMAS decisivas: el sim tiene friccion estatica,
-            # si el comando es chico la base se CONGELA. Por eso los comandos no-cero van
-            # por encima de un piso. Lejos avanza decidido; cerca frena para no sobrepasar.
+        elif abs(herr) > 0.20:
+            # GIRA PRIMERO en el lugar (sin avance): si avanza mientras gira, EMPUJA
+            # contra el mostrador y la base se CONGELA. Giro decisivo (vence la friccion).
             turn = float(np.clip(BASE_YAW_SIGN * 2.0 * herr, -1.0, 1.0))
-            if abs(herr) > 0.06:
-                turn = float(np.sign(turn) * max(0.45, abs(turn)))   # piso para girar
-            else:
-                turn = 0.0
-            align = max(0.0, 1.0 - abs(herr) / 0.6)
+            turn = float(np.sign(turn) * max(0.5, abs(turn)))
+            controller.set_velocities({"base_forward": 0.0, "base_counterclockwise": turn})
+            mode = "gira"
+        else:
+            # ALINEADO: AVANZA decidido (piso minimo para vencer la friccion estatica),
+            # frena por distancia para no sobrepasar; correccion de rumbo suave.
+            turn = float(np.clip(BASE_YAW_SIGN * 1.2 * herr, -0.3, 0.3))
             cap = 0.25 if front < SLOW else 1.0
-            fwd = align * float(np.clip(2.2 * dist, 0.0, 1.0)) * cap
-            if dist > 0.3 and fwd > 0.03:
+            fwd = float(np.clip(2.2 * dist, 0.0, 1.0)) * cap
+            if fwd > 0.03:
                 fwd = max(0.35, fwd)             # piso para avanzar (vencer friccion)
             controller.set_velocities({"base_forward": fwd, "base_counterclockwise": turn})
-            mode = "avanza" if align > 0.3 else "gira"
+            mode = "avanza"
         if time.time() - last > 1.0:
             log(f"[pos]   nav-paralelo dist={dist:.2f} herr={np.degrees(herr):+.0f}deg front={front:.2f} [{mode}]")
             last = time.time()

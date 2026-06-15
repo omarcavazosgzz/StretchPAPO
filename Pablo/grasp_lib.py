@@ -134,22 +134,26 @@ def _gripper_z(sim):
     return float(sim.pull_status().camera_poses["d405_rgb"]["pos"][2])
 
 
-# offset CAMARA d405 -> CENTRO DE AGARRE (muneca abajo), calibrado con _diag_gripper.py:
-# radial=-0.05 m (hacia la base), a-lo-largo~0, vertical=-0.174 m (debajo de la camara).
-GC_RADIAL = -0.05
-GC_DZ = -0.174
+# CENTRO DE AGARRE de los dedos por CINEMATICA PURA (get_state: base, lift_up, arm_out),
+# calibrado con _diag_gripper.py. NO usa la pose de camara d405 (que llega STALE por la
+# concurrencia del pull_status y corrompia la geometria). Robusto.
+#   radial desde la base = GC_RADIAL0[mode] + arm_out ;  z = lift_up + GC_ZLIFT[mode]
+#   muneca HORIZONTAL (lateral): los dedos apuntan AL FRENTE (entrar recto).
+#   muneca ABAJO (top): los dedos apuntan ABAJO.
+GC_RADIAL0 = {"lateral": 0.415, "top": 0.139}
+GC_ZLIFT   = {"lateral": 0.112, "top": -0.133}
 
 
-def _grasp_center(sim, controller):
-    """Posicion mundial del CENTRO DE AGARRE de los dedos (donde cierran), calculada
-    desde la pose FRESCA de la camara d405 + el offset calibrado y la orientacion de la
-    base (valido con la muneca mirando abajo). Cinematica propia del robot."""
-    cam = np.array(sim.pull_status().camera_poses["d405_rgb"]["pos"], float)
-    th = controller.get_state()["base_theta"]
+def _grasp_center(controller, mode="lateral"):
+    """Posicion mundial (x,y,z) del CENTRO DE AGARRE de los dedos por CINEMATICA propia
+    del robot (base + lift_up + arm_out). mode='lateral' (muneca horizontal) o 'top'."""
+    s = controller.get_state()
+    bx, by, th = s["base_x"], s["base_y"], s["base_theta"]
     rad = np.array([np.sin(th), -np.cos(th)])        # direccion de extension del brazo
-    gc = cam.copy()
-    gc[:2] = cam[:2] + GC_RADIAL * rad
-    gc[2] = cam[2] + GC_DZ
+    radial = GC_RADIAL0[mode] + s["arm_out"]
+    gc = np.empty(3)
+    gc[:2] = np.array([bx, by]) + radial * rad
+    gc[2] = s["lift_up"] + GC_ZLIFT[mode]
     return gc
 
 
@@ -188,69 +192,97 @@ def _grasp_lateral(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj
       3) centrar con la camara del brazo (vertical via lift, horizontal via wrist_yaw), SIN extender.
       4) EXTENDER el brazo hacia el objeto vigilando la PROFUNDIDAD de la muneca; cerrar al alcance.
     """
-    from positioning import _base_pose, GRIPPER_HOME_OFFSET
-    wdet, wdepth, wdepth_center = _wrist_helpers(det, sim, body, WRIST, WRIST_D)
+    from positioning import _base_pose
+    obj_xy = np.array(obj[:2])
 
-    # 1) muneca horizontal (apunta a lo largo del brazo = al objeto) + gripper abierto
-    log("[gL] muneca horizontal + gripper abierto")
+    def _gc_fresh():
+        for _ in range(6):
+            gc = _grasp_center(controller, mode="lateral")
+            if gc[2] > obj[2] - 0.30:           # descarta lecturas stale (z implausible)
+                return gc
+            time.sleep(0.05)
+        return _grasp_center(controller, mode="lateral")
+
+    def _decomp():
+        gc = _gc_fresh()
+        off = obj_xy - gc[:2]
+        bx, by, th = _base_pose(controller)
+        rad = np.array([np.sin(th), -np.cos(th)])
+        along = np.array([np.cos(th), np.sin(th)])
+        return gc, float(off @ rad), float(off @ along)
+
+    # 1) muneca HORIZONTAL (los dedos apuntan al frente = ENTRAR RECTO) + gripper abierto
+    log("[gL] muneca horizontal (entrar recto) + gripper abierto")
     servo.move_to({"wrist_pitch_up": 0.0, "wrist_yaw_counterclockwise": 0.0,
                    "wrist_roll_counterclockwise": 0.0, "gripper_open": 0.5})
     _wait_joint(controller, "wrist_pitch_up", 0.0, tol=0.05, timeout=4, servo=servo)
 
-    # 2) BAJAR a la ALTURA del objeto estando RECOGIDO (gripper sobre el pasillo -> sin
-    #    choque). La altura del gripper se mide por CINEMATICA (camara de la muneca) y se
-    #    iguala a obj_z (localizado por la camara de la cabeza). Asi el objeto queda
-    #    centrado verticalmente en la vista horizontal de la muneca.
-    target_z = float(obj[2])
-    log(f"[gL] bajo a la altura del objeto por cinematica (obj_z={target_z:.2f}) RECOGIDO")
-    for _ in range(30):
-        gz = _gripper_z(sim)
-        dz = target_z - gz
-        if abs(dz) < 0.015:
+    _, d_rad0, d_along0 = _decomp()
+    log(f"[gL] offset inicial: radial={d_rad0:+.3f} a-lo-largo={d_along0:+.3f}")
+
+    # 2) BAJAR el CENTRO DE AGARRE a la ALTURA del objeto, estando RECOGIDO (los dedos,
+    #    horizontales, quedan a la altura del objeto sobre el pasillo -> sin chocar).
+    log("[gL] bajando el centro de agarre a la altura del objeto...")
+    for _ in range(25):
+        gc = _gc_fresh()
+        dz = obj[2] - gc[2]
+        if abs(dz) < 0.02:
             break
         lf = controller.get_state()["lift_up"]
-        new_lf = float(np.clip(lf + dz, 0.10, 1.05))
+        new_lf = float(np.clip(lf + dz, 0.12, 1.05))
+        if abs(new_lf - lf) < 0.005:
+            break
         servo.move_to({"lift_up": new_lf})
-        _wait_joint(controller, "lift_up", new_lf, tol=0.015, timeout=3, servo=servo)
-    log(f"[gL] gripper_z={_gripper_z(sim):.2f} (obj_z={target_z:.2f}) lift={controller.get_state()['lift_up']:.2f}")
+        _wait_joint(controller, "lift_up", new_lf, tol=0.015, timeout=2.5, servo=servo)
 
-    # 3) EXTENDER el brazo hacia el objeto, midiendo la PROFUNDIDAD de la region central
-    #    de la muneca (sin depender del RGB). Cierra cuando el objeto esta al alcance.
-    bx, by, _ = _base_pose(controller)
-    base_obj = float(np.hypot(obj[0] - bx, obj[1] - by))
-    arm_geo = float(np.clip(base_obj - GRIPPER_HOME_OFFSET + 0.06, 0.05, 0.5))   # alcance estimado
-    arm_cap = float(np.clip(arm_geo + 0.10, 0.05, 0.5))
-    log(f"[gL] extiendo hacia el objeto (base_obj={base_obj:.2f} arm_geo={arm_geo:.2f} cap={arm_cap:.2f})...")
-    at_reach = False
-    dep_prev = None
-    for it in range(48):
-        depc = wdepth_center()
-        e, d = wdet()
+    # 3) ENTRAR RECTO: extender arm_out (horizontal) hasta SOBREPASAR ~3cm el objeto, para
+    #    que el objeto quede ENTRE los dedos (no en la punta). El eje a-lo-largo lo dejo
+    #    face_arm. NO movemos la base.
+    OVERSHOOT = 0.03
+    log("[gL] entrando recto: extiendo arm_out sobrepasando el objeto (radial)...")
+    for _ in range(16):
+        gc, d_rad, _ = _decomp()
+        if d_rad <= -OVERSHOOT:                 # ya sobrepaso el objeto
+            break
         a = controller.get_state()["arm_out"]
-        log(f"[gL]   ext it{it} arm_out={a:.2f} depth_c={depc if depc else -1:.2f} "
-            f"e={'None' if e is None else f'({e[0]:+.2f},{e[1]:+.2f})'}")
-        # cerrar si la profundidad central dice que el objeto esta al alcance
-        if depc is not None and depc <= FINGER_DEPTH_LAT:
-            log(f"[gL]   objeto al alcance (depth_c={depc:.2f}) -> cerrar"); at_reach = True; break
-        # refinar altura con el RGB si lo vemos descentrado verticalmente
-        if e is not None and abs(e[1]) > 0.14:
-            lf = controller.get_state()["lift_up"]
-            new_lf = float(np.clip(lf + 0.4 * e[1], 0.10, 1.05))
-            servo.move_to({"lift_up": new_lf})
-            _wait_joint(controller, "lift_up", new_lf, tol=0.02, timeout=1.2, servo=servo)
-        # ¿llegamos al alcance geometrico? cerrar (localizacion buena ~3cm)
-        if a >= arm_geo - 0.01:
-            log(f"[gL]   alcance geometrico (arm_out={a:.2f}>=geo={arm_geo:.2f}) -> cerrar"); at_reach = True; break
-        na = float(np.clip(a + 0.025, 0.0, arm_cap))
-        if na <= a + 1e-4:
-            log("[gL]   brazo en el tope -> cerrar igual"); at_reach = True; break
-        servo.move_to({"arm_out": na})
-        _wait_joint(controller, "arm_out", na, tol=0.02, timeout=2, servo=servo)
-        dep_prev = depc
-        time.sleep(0.05)
+        new_a = float(np.clip(a + d_rad + OVERSHOOT, 0.0, 0.5))
+        if abs(new_a - a) < 0.003:
+            break                               # brazo en el tope -> cierra igual
+        servo.move_to({"arm_out": new_a})
+        _wait_joint(controller, "arm_out", new_a, tol=0.02, timeout=3, servo=servo)
 
-    if not at_reach:
-        log("[gL] no se alcanzo el objeto"); return False
+    gc, d_rad, d_along = _decomp()
+    log(f"[gL] offset CENTRO-objeto: radial={d_rad:+.3f} a-lo-largo={d_along:+.3f} dz={obj[2]-gc[2]:+.3f}")
+
+    # 3.5) AFINAR el centrado A-LO-LARGO con la CAMARA DEL BRAZO via wrist_yaw (junta
+    #      PRECISA, no la base): ex (horizontal en la wrist cam) ~ eje a-lo-largo = eje de
+    #      la abertura de los dedos. Centrar ex pone el objeto alineado con la abertura.
+    wdet, _, _ = _wrist_helpers(det, sim, body, WRIST, WRIST_D)
+    e0, _ = wdet()
+    if e0 is not None:
+        yw0 = controller.get_state()["wrist_yaw_counterclockwise"]
+        yw1 = float(np.clip(yw0 + 0.12, -0.6, 0.6)); servo.move_to({"wrist_yaw_counterclockwise": yw1})
+        _wait_joint(controller, "wrist_yaw_counterclockwise", yw1, tol=0.02, timeout=2, servo=servo)
+        e1, _ = wdet()
+        s_yaw = float(np.sign((e1[0] - e0[0]) / (yw1 - yw0))) if (e1 is not None and abs(e1[0]-e0[0]) > 0.01) else 1.0
+        servo.move_to({"wrist_yaw_counterclockwise": yw0})
+        _wait_joint(controller, "wrist_yaw_counterclockwise", yw0, tol=0.02, timeout=2, servo=servo)
+        log(f"[gL] centrando a-lo-largo con wrist_yaw (camara del brazo, s={s_yaw:+.0f})...")
+        for it in range(8):
+            e, _ = wdet()
+            if e is None:
+                break
+            log(f"[gL]   yaw it{it} ex={e[0]:+.3f}")
+            if abs(e[0]) < 0.03:
+                break
+            yw = controller.get_state()["wrist_yaw_counterclockwise"]
+            new_yw = float(np.clip(yw - s_yaw * 0.6 * e[0], -0.6, 0.6))
+            if abs(new_yw - yw) < 0.004:
+                break
+            servo.move_to({"wrist_yaw_counterclockwise": new_yw})
+            _wait_joint(controller, "wrist_yaw_counterclockwise", new_yw, tol=0.02, timeout=2, servo=servo)
+
+    # 4) CERRAR firme y LEVANTAR (el objeto esta entre los dedos a esta pose)
     return _close_and_lift(controller, sim, servo, body, log)
 
 
@@ -282,11 +314,11 @@ def _grasp_top(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj, lo
         """Centro de agarre, descartando lecturas basura (pull_status a veces
         desactualizado tras mover la base): exige gripper por ENCIMA del objeto-0.3."""
         for _ in range(6):
-            gc = _grasp_center(sim, controller)
+            gc = _grasp_center(controller, mode="top")
             if gc[2] > obj[2] - 0.30:
                 return gc
             time.sleep(0.05)
-        return _grasp_center(sim, controller)
+        return _grasp_center(controller, mode="top")
 
     def _decomp():
         gc = _gc_fresh()
