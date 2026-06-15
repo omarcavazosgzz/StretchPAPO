@@ -99,6 +99,51 @@ def face_arm_at_object(controller, obj_xy, log=print, iters=4):
     return ttheta
 
 
+def nav_to_parallel(controller, sim, obj_xy, standoff=0.6, max_time=35, log=print):
+    """Navega a una pose PARALELA al mostrador (en el pasillo, a 'standoff' del objeto)
+    con ESQUIVE reactivo por LiDAR: NO va recto al objeto; si detecta choque al frente,
+    GIRA hacia el lado mas abierto y sigue hacia el punto. El brazo extendido alcanza,
+    asi que un standoff comodo (~0.6 m) esta bien."""
+    obj_xy = np.array(obj_xy, float)
+    AVOID, SLOW = 0.45, 0.75
+    t0 = time.time(); last = 0.0
+    while time.time() - t0 < max_time:
+        bx, by, th = _base_pose(controller)
+        tx, ty = compute_grasp_xy(obj_xy, (bx, by), standoff)     # punto en el pasillo
+        dist = float(np.hypot(tx - bx, ty - by))
+        if dist < 0.12:
+            break
+        herr = _wrap(np.arctan2(ty - by, tx - bx) - th)
+        front = lidar_front_min(controller, 30)
+        L = lidar_front_min(controller, 25, front=(LIDAR_FRONT + 55) % 360)
+        R = lidar_front_min(controller, 25, front=(LIDAR_FRONT - 55) % 360)
+        if front < AVOID:                       # obstaculo al frente -> ESQUIVAR
+            steer = 1.0 if L >= R else -1.0     # girar hacia el lado mas abierto
+            controller.set_velocities({"base_counterclockwise": BASE_YAW_SIGN * 0.55 * steer,
+                                       "base_forward": 0.05})
+            mode = "ESQUIVA"
+        else:
+            # COMBINADO: gira (amortiguado) Y avanza a la vez. El avance se escala por
+            # la alineacion Y por la distancia (frena cerca del punto -> sin sobrepaso).
+            turn = float(np.clip(BASE_YAW_SIGN * 1.2 * herr, -0.7, 0.7))
+            align = max(0.0, 1.0 - abs(herr) / 0.5)
+            dist_scale = float(np.clip(2.2 * dist, 0.12, 1.0))   # frena al acercarse
+            cap = 0.18 if front < SLOW else 1.0
+            fwd = align * dist_scale * cap
+            controller.set_velocities({"base_forward": fwd, "base_counterclockwise": turn})
+            mode = "avanza" if align > 0.3 else "gira"
+        if time.time() - last > 1.0:
+            log(f"[pos]   nav-paralelo dist={dist:.2f} herr={np.degrees(herr):+.0f}deg front={front:.2f} [{mode}]")
+            last = time.time()
+        time.sleep(DT)
+    stop_base(controller)
+    bx, by, th = _base_pose(controller)
+    tx, ty = compute_grasp_xy(obj_xy, (bx, by), standoff)
+    d = float(np.hypot(tx - bx, ty - by))
+    log(f"[pos] pose paralela: base ({bx:.2f},{by:.2f}) dist_al_punto={d:.2f}")
+    return {"reached": d < 0.25, "final": (bx, by, th)}
+
+
 def drive_forward(controller, dist, speed=0.3, max_time=6.0, brake_lidar=True):
     """Avanza (o retrocede si dist<0) ~dist metros, con freno LiDAR al frente."""
     b0 = np.array(_base_pose(controller)[:2])
@@ -139,30 +184,11 @@ def coarse_align_gripper(controller, sim, servo, obj_xy, iters=5, log=print):
             servo.hold(); time.sleep(DT)
         if new in (0.0, 0.5):     # arm en su limite: no puede mas lateral
             break
-    # 2) A LO LARGO del mostrador con la base: LAZO CERRADO proporcional (frena
-    #    cerca del objetivo -> sin sobrepaso). Signo de base_forward autocalibrado.
-    def d_fwd_now():
-        bx, by, th = _base_pose(controller)
-        xloc = np.array([np.cos(th), np.sin(th)])
-        return float((obj_xy - _wrist_xy(sim)) @ xloc), xloc
-
-    w_before = _wrist_xy(sim)
-    _, xloc0 = d_fwd_now()
-    controller.set_velocities({"base_forward": 0.3, "base_counterclockwise": 0.0})
-    time.sleep(0.4)
-    stop_base(controller)
-    moved = float((_wrist_xy(sim) - w_before) @ xloc0)        # mov del gripper al avanzar +
-    fwd_sign = 1.0 if moved >= 0 else -1.0
-    for _ in range(80):
-        d_fwd, _ = d_fwd_now()
-        if abs(d_fwd) < 0.03:
-            break
-        v = float(np.clip(fwd_sign * 4.0 * d_fwd, -0.4, 0.4))
-        controller.set_velocities({"base_forward": v, "base_counterclockwise": 0.0})
-        time.sleep(DT)
-    stop_base(controller)
+    # 2) El eje A LO LARGO del mostrador ya viene alineado de nav_to_parallel; NO
+    #    movemos la base aqui (su control fino es impreciso y divergia). Si hace falta
+    #    un ajuste fino en ese eje, lo hace el centrado con la camara del brazo.
     off_mag = float(np.hypot(*(obj_xy - _wrist_xy(sim))))
-    log(f"[pos]   alineado: offset final={off_mag:.2f}m (fwd_sign={fwd_sign:+.0f})")
+    log(f"[pos]   alineado (lateral con brazo): offset={off_mag:.2f}m")
     return off_mag
 
 

@@ -33,7 +33,8 @@ def _bounded_err(d):
 
 
 def aim_head(controller, det, sim, servo, target, HEAD, HEAD_MJCF="d435i_camera_rgb",
-             body=None, log=print, KP=1.3, DB=0.025, V=0.9, timeout=60):
+             body=None, log=print, KP=1.3, DB=0.025, V=0.9, timeout=60,
+             do_base_orient=True, do_approach=True):
     body = body or target
     t0 = time.time()
     DT = 1 / 30
@@ -98,20 +99,22 @@ def aim_head(controller, det, sim, servo, target, HEAD, HEAD_MJCF="d435i_camera_
         time.sleep(0.3)
         return True
 
-    log("[head] orientando la base hacia el objeto...")
-    if orient_base() is None:
-        log(f"[head] objeto '{body}' no existe"); return {"ok": False}
+    if do_base_orient:
+        log("[head] orientando la base hacia el objeto...")
+        if orient_base() is None:
+            log(f"[head] objeto '{body}' no existe"); return {"ok": False}
 
-    o, _ = obj_cam()
-    st = controller.get_state()
-    dist = float(np.hypot(o[0] - st["base_x"], o[1] - st["base_y"]))
-    if dist > 0.95:
-        from navigation import go_to_xy
-        log(f"[head] acercandose al objeto (dist={dist:.2f}m, freno LiDAR)...")
-        go_to_xy(controller, (o[0], o[1]), standoff=0.7, max_time=18, log=log)
-        orient_base()
+    if do_approach:
+        o, _ = obj_cam()
         st = controller.get_state()
-        log(f"[head] base ahora en ({st['base_x']:.2f},{st['base_y']:.2f}); re-orientada.")
+        dist = float(np.hypot(o[0] - st["base_x"], o[1] - st["base_y"]))
+        if dist > 0.95:
+            from navigation import go_to_xy
+            log(f"[head] acercandose al objeto (dist={dist:.2f}m, freno LiDAR)...")
+            go_to_xy(controller, (o[0], o[1]), standoff=0.7, max_time=18, log=log)
+            orient_base()
+            st = controller.get_state()
+            log(f"[head] base ahora en ({st['base_x']:.2f},{st['base_y']:.2f}); re-orientada.")
 
     # ── 1) ADQUIRIR: tilt fijo al mostrador + BARRIDO de pan hasta in_frame ────
     # Sin matematica de azimut (inestable con la cabeza inclinada): barre el pan a

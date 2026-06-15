@@ -8,7 +8,7 @@
     "wrist_pitch_up": 0.1,
     "wrist_roll_counterclockwise": 0.35,
     "gripper_open": 0.07,
-    "base_forward": 0.15,
+    "base_forward": 0.35,
     "base_counterclockwise": 1.8
   },
   "joint_max_accels": {

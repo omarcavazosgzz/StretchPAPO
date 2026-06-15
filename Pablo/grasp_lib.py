@@ -30,35 +30,43 @@ def position_for_grasp(controller, sim, det, model, servo, body, HEAD, HEAD_D, W
     """Deja el robot posicionado con el objeto en la camara del brazo. Returns
     (obj_world_xyz, objeto_en_wrist:bool)."""
     from phase1_lib import aim_head
-    from positioning import (localize_with_head_camera, remember_object, compute_grasp_xy,
-                             goto_pose, face_arm_at_object, coarse_align_gripper,
+    from positioning import (localize_with_head_camera, remember_object,
+                             nav_to_parallel, face_arm_at_object, coarse_align_gripper,
                              _base_pose, GRIPPER_HOME_OFFSET)
 
-    log("[g] Fase 1a (cabeza) para ver el objeto...")
-    aim_head(controller, det, sim, servo, body, HEAD, body=body, log=log)
-    obj = localize_with_head_camera(sim, det, model, body, HEAD, HEAD_D, log=log)
-    truth = remember_object(sim, body)
-    if obj is None:
-        obj = truth
-    log(f"[g] objeto localizado por camara: ({obj[0]:.2f},{obj[1]:.2f},{obj[2]:.2f}) "
-        f"[verdad ({truth[0]:.2f},{truth[1]:.2f},{truth[2]:.2f})]")
+    def localize(tag):
+        o = localize_with_head_camera(sim, det, model, body, HEAD, HEAD_D, log=log)
+        t = remember_object(sim, body)
+        if o is None:
+            o = t
+        log(f"[g] localizado por camara ({tag}): ({o[0]:.2f},{o[1]:.2f},{o[2]:.2f}) "
+            f"[verdad ({t[0]:.2f},{t[1]:.2f},{t[2]:.2f})]")
+        return o
 
+    # 1) Buscar/centrar el objeto con la CABEZA (SIN ir recto al objeto) y localizar.
+    log("[g] buscando/centrando el objeto con la cabeza...")
+    aim_head(controller, det, sim, servo, body, HEAD, body=body, log=log, do_approach=False)
+    obj = localize("inicial")
     controller.stop(); time.sleep(0.4); servo.sync()
 
-    # SUBIR EL BRAZO ANTES de navegar/rotar (con el brazo RECOGIDO): si rota con el
-    # brazo abajo, al terminar de girar choca con el borde salido de la barra del
-    # mostrador. Lo subimos por ENCIMA primero, retraido y compacto.
+    # 2) SUBIR el brazo (recogido) a altura segura ANTES de mover/rotar.
     lift_safe = float(np.clip(obj[2] + 0.16, 0.3, 1.05))
-    log(f"[g] subo el brazo a altura segura (lift={lift_safe:.2f}) ANTES de rotar")
+    log(f"[g] subo el brazo a altura segura (lift={lift_safe:.2f}) ANTES de mover/rotar")
     servo.move_to({"gripper_open": 0.5, "wrist_yaw_counterclockwise": 0.0,
                    "wrist_pitch_up": 0.0, "arm_out": 0.0, "lift_up": lift_safe})
     _wait_joint(controller, "lift_up", lift_safe, servo=servo)
     _wait_joint(controller, "arm_out", 0.0, servo=servo)
 
-    bx, by, _ = _base_pose(controller)
-    if float(np.hypot(obj[0] - bx, obj[1] - by)) > 0.75:
-        tx, ty = compute_grasp_xy(obj[:2], (bx, by), grasp_dist=0.55)
-        goto_pose(controller, tx, ty, None, log=log)
+    # 3) Navegar a una pose PARALELA al mostrador (pasillo) con ESQUIVE reactivo.
+    #    NO va recto al objeto -> no choca con el mostrador.
+    nav_to_parallel(controller, sim, obj[:2], standoff=0.6, log=log)
+
+    # 4) NO re-localizamos en la pose paralela (la cabeza tendria que panear ~90deg al
+    #    lado, poco fiable). La posicion-MUNDO del objeto no cambia con el movimiento de
+    #    la base, asi que usamos la localizacion inicial (buena). Solo aseguramos la base.
+    controller.stop(); time.sleep(0.3); servo.sync()
+
+    # 5) Girar para que el brazo apunte al objeto (ya en alto -> libra el borde).
     face_arm_at_object(controller, obj[:2], log=log)
 
     # ya ROTADO y EN ALTO: extender el brazo (por encima del mostrador) y muneca abajo
