@@ -614,6 +614,15 @@ class MujocoServer:
                     "pos": [float(v) for v in self.mjdata.cam_xpos[i]],
                     "xmat": [float(v) for v in self.mjdata.cam_xmat[i]],
                 }
+        # Pose-mundo del CENTRO DE AGARRE de los dedos (y de la camara d405) para poder
+        # posicionar los DEDOS (no la camara) sobre el objeto al agarrar desde arriba.
+        for bname in ("link_grasp_center", "link_gripper_finger_left", "link_gripper_finger_right"):
+            try:
+                b = self.mjdata.body(bname)
+                camera_poses[bname] = {"pos": [float(v) for v in b.xpos],
+                                       "xmat": [float(v) for v in b.xmat]}
+            except Exception:
+                pass
         new_status.camera_poses = camera_poses
 
         self.data_proxies.set_status(new_status)

@@ -20,7 +20,8 @@ OUT.mkdir(exist_ok=True)
 def main():
     args = [a.lower() for a in sys.argv[1:]]
     view = any(a in ("ver", "view", "v") for a in args)
-    objs = [a for a in args if a not in ("ver", "view", "v")]
+    method = "top" if any(a in ("top", "arriba") for a in args) else "lateral"
+    objs = [a for a in args if a not in ("ver", "view", "v", "top", "arriba", "lateral")]
     target = objs[0] if objs else "huevo"
 
     from sim_setup import start_kitchen
@@ -40,9 +41,9 @@ def main():
     HEAD, HEAD_D = StretchCameras.cam_d435i_rgb, StretchCameras.cam_d435i_depth
     WRIST, WRIST_D = StretchCameras.cam_d405_rgb, StretchCameras.cam_d405_depth
 
-    log(f"[fase2] objetivo='{target}'. Posicionando...")
+    log(f"[fase2] objetivo='{target}' metodo='{method}'. Posicionando...")
     obj, en_wrist = position_for_grasp(controller, sim, det, model, servo, body,
-                                       HEAD, HEAD_D, WRIST, log=log)
+                                       HEAD, HEAD_D, WRIST, method=method, log=log)
 
     def snap(tag):
         allf = sim.pull_camera_data().get_all(use_depth_color_map=False)
@@ -57,9 +58,10 @@ def main():
     snap("pre")
 
     if not en_wrist:
-        log("[fase2] el objeto no quedo en la camara del brazo (posicionamiento). Reviso snaps.")
+        log("[fase2] el posicionamiento no quedo listo. Reviso snaps.")
     else:
-        ok = grasp_object(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj, log=log)
+        ok = grasp_object(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj,
+                          method=method, log=log)
         snap("post")
         log(f"\n[fase2] ===== {'AGARRE OK' if ok else 'REVISAR'} =====")
 

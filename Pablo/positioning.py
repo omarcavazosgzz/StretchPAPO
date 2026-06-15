@@ -119,17 +119,23 @@ def nav_to_parallel(controller, sim, obj_xy, standoff=0.6, max_time=35, log=prin
         R = lidar_front_min(controller, 25, front=(LIDAR_FRONT - 55) % 360)
         if front < AVOID:                       # obstaculo al frente -> ESQUIVAR
             steer = 1.0 if L >= R else -1.0     # girar hacia el lado mas abierto
-            controller.set_velocities({"base_counterclockwise": BASE_YAW_SIGN * 0.55 * steer,
-                                       "base_forward": 0.05})
+            controller.set_velocities({"base_counterclockwise": BASE_YAW_SIGN * 0.7 * steer,
+                                       "base_forward": 0.06})
             mode = "ESQUIVA"
         else:
-            # COMBINADO: gira (amortiguado) Y avanza a la vez. El avance se escala por
-            # la alineacion Y por la distancia (frena cerca del punto -> sin sobrepaso).
-            turn = float(np.clip(BASE_YAW_SIGN * 1.2 * herr, -0.7, 0.7))
-            align = max(0.0, 1.0 - abs(herr) / 0.5)
-            dist_scale = float(np.clip(2.2 * dist, 0.12, 1.0))   # frena al acercarse
-            cap = 0.18 if front < SLOW else 1.0
-            fwd = align * dist_scale * cap
+            # COMBINADO con magnitudes MINIMAS decisivas: el sim tiene friccion estatica,
+            # si el comando es chico la base se CONGELA. Por eso los comandos no-cero van
+            # por encima de un piso. Lejos avanza decidido; cerca frena para no sobrepasar.
+            turn = float(np.clip(BASE_YAW_SIGN * 2.0 * herr, -1.0, 1.0))
+            if abs(herr) > 0.06:
+                turn = float(np.sign(turn) * max(0.45, abs(turn)))   # piso para girar
+            else:
+                turn = 0.0
+            align = max(0.0, 1.0 - abs(herr) / 0.6)
+            cap = 0.25 if front < SLOW else 1.0
+            fwd = align * float(np.clip(2.2 * dist, 0.0, 1.0)) * cap
+            if dist > 0.3 and fwd > 0.03:
+                fwd = max(0.35, fwd)             # piso para avanzar (vencer friccion)
             controller.set_velocities({"base_forward": fwd, "base_counterclockwise": turn})
             mode = "avanza" if align > 0.3 else "gira"
         if time.time() - last > 1.0:

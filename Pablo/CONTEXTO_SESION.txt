@@ -2,8 +2,9 @@
  CONTEXTO DEL PROYECTO — Stretch + RoboCasa: manipulacion por vision
  (documento de traspaso para continuar en otra sesion/computadora)
  Branch: Pablo   |   Repo: github.com/omarcavazosgzz/StretchPAPO
- Ultima actualizacion: incluye Fase 1a, posicionamiento, localizacion por camara,
- altura segura y Fase 2 (agarre) implementada. Bloqueo actual: precision de la base.
+ Ultima actualizacion (esta sesion): base FIX (ya no se congela), acercamiento
+ PARALELO con esquive, agarre REESTRUCTURADO (lateral + desde-arriba) con
+ alineacion por centro-de-agarre (cinematica) + objeto por camara.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -15,37 +16,54 @@ camaras para detectar/ubicar. Ir paso por paso, verificando cada fase. Sin choca
 
 Fases:
   Fase 1a: la camara de la CABEZA busca, se acerca y centra el objeto.
-  Fase 1.5: posicionarse (paralelo, sin chocar) y localizar el objeto POR CAMARA.
+  Fase 1.5: posicionarse (PARALELO, sin chocar) y localizar el objeto POR CAMARA.
   Fase 1b: la camara del BRAZO (muneca) centra el objeto sin que la cabeza lo pierda.
   Fase 2 : agarrar el objeto.
   Fase 3 : llevarlo cerca de la estufa (u otra zona) + abrir cajones. Anti-colision.
 
 --------------------------------------------------------------------------------
-2) REQUISITOS Y DECISIONES QUE DI (acumulado de la sesion)
+2) PROMPTS / INSTRUCCIONES QUE HE DADO (acumulado, lo mas literal posible)
 --------------------------------------------------------------------------------
-- Plataforma: AHORA Windows nativo, escribir todo PORTABLE a Ubuntu. (Windows SI
-  funciona; en Windows NO usar MUJOCO_GL=egl, eso es Linux.)
-- Proyecto fuera de OneDrive: ruta de trabajo = C:\dev\StretchPAPO (NO la de OneDrive).
-- Cocina RoboCasa SIMPLE (layout 0). Escena de prueba SIEMPRE con: cubo ROJO, HUEVO,
-  4+ CAJONES, TOMATE, CUCHILLO, PLATO.
-- Deteccion por VISION, HIBRIDO: "oracle" (default, 100% en sim) o "yolo" (robot real),
-  configurable en stretch_toolkit/sim_config.json -> "detector".
-- Comandos por NOMBRE (huevo/tomate/cubo_rojo/cuchillo/plato; cajones = Fase 3).
-- Las 2 camaras: CABEZA busca y se acerca; BRAZO centra sin que la cabeza pierda.
-- Antes de la camara del brazo: posicionarse bien para agarrar SIN CHOCAR (LiDAR).
-  Idea: paralelo al objeto, brazo hacia el objeto, distancia segura.
-- (NUEVO) La posicion del objeto debe obtenerse de la CAMARA (profundidad), NO de
-  las coordenadas del simulador. -> HECHO.
-- (NUEVO) Ajustar la ALTURA del brazo para no chocar con la barra del mostrador. -> HECHO.
-- (NUEVO) El centrado FINO se hace dentro del AGARRE con la camara del brazo
-  (decision del usuario). -> Implementado; bloqueado por la base (ver seccion 6).
-- Subir cambios a branch Pablo. Mantener este txt actualizado.
+- "Crea una carpeta Pablo. El robot abre cajones y agarra objetos y los lleva a la
+   estufa usando SOLO camaras. Ve fase por fase y verifica antes de reportar. Que NO
+   choque al moverse."
+- Plataforma: "Ahora trabajare en Windows, proximamente Ubuntu; hazlo en Windows
+   ahora pero portable." (Se eligio WSL2 a futuro, pero trabajar en Windows YA.)
+- Mover el proyecto FUERA de OneDrive a una ruta local limpia -> C:\dev\StretchPAPO.
+- Escena de prueba: cocina RoboCasa SIMPLE (layout 0, nada raro). SIEMPRE con: cubo
+   ROJO, HUEVO, 4+ CAJONES, TOMATE, CUCHILLO, PLATO.
+- Deteccion por VISION, HIBRIDO: "oracle" por defecto (100% en sim) + "yolo"
+   conmutable con un flag de config (estilo 0/1).
+- Comandos por NOMBRE (huevo/tomate/cubo_rojo/cuchillo/plato).
+- DOS camaras: la de la CABEZA busca y se acerca; la del BRAZO (muneca) centra sin
+   que la cabeza pierda el objeto de vista.
+- "La posicion del objeto debe salir de la CAMARA (profundidad), NO de las
+   coordenadas del simulador (si usa la camara y guarda la posicion, esta bien)."
+- "Ajusta la ALTURA del brazo para que no choque con la barra del mostrador."
+- "El centrado FINO hazlo en el AGARRE con la camara del brazo."
+- "Sube el brazo ANTES de rotar (si rota con el brazo abajo se atora en el borde
+   saliente del mostrador). Verifica que llega al destino."
+- "Arregla el ACERCAMIENTO de la base: va recto al objeto y choca. Cambia la logica
+   para llegar en PARALELO (aunque quede un poco mas lejos, el brazo extendido
+   alcanza). Si detecta que va a chocar, que ROTE para esquivar y siga a un punto
+   optimo." -> HECHO (nav_to_parallel con esquive por LiDAR).
+- "Trabaja en la lentitud intermitente de la base." -> HECHO (ver seccion 5/6).
+- "Cambia el agarre a un metodo LATERAL/de lado: ya estando ARRIBA y en PARALELO,
+   BAJA a la altura del objeto y luego EXTIENDE el brazo para llegar al objeto. El de
+   ARRIBA no esta mal (sirve p.ej. para el cuchillo), pero cambialo para ciertos
+   objetos. El bug actual: sube/baja el gripper y se mueve, choca y no avanza. Deberia:
+   sin bajar el gripper, encontrar el objeto SOLO con la camara (puede ayudarse de la
+   camara de la cabeza), luego ir bajando con la camara de PROFUNDIDAD y cerrar cuando
+   pueda. Esto solo aplica si usamos 2 metodos; RECOMIENDO el primero (lateral), mas
+   general." -> Implementados AMBOS (ver seccion 4 grasp_lib.py).
+- "Sube todo a mi branch Pablo cuando termines. Mantén el txt y los prompts
+   actualizados."
 
 --------------------------------------------------------------------------------
 3) ENTORNO (Windows, portable a Ubuntu)
 --------------------------------------------------------------------------------
-uv (C:\Users\<user>\.local\bin) y git (C:\Program Files\Git\cmd) en el PATH de usuario.
-Montaje (desde C:\dev\StretchPAPO):
+uv (C:\Users\<user>\.local\bin) y git (C:\Program Files\Git\cmd) deben estar en el
+PATH (abrir PowerShell NUEVA tras instalarlos). Montaje desde C:\dev\StretchPAPO:
     uv sync
     uv pip install -e ".[robocasa]"
     uv pip install -e "robocasa@third_party/robocasa"
@@ -55,118 +73,148 @@ Montaje (desde C:\dev\StretchPAPO):
     "y" | uv run third_party/robocasa/robocasa/scripts/download_kitchen_assets.py
 (submodulos FORKS: hello-binit/robocasa, SilentSammy/robosuite; si faltan:
     git submodule update --init --recursive )
-Correr: uv run Pablo/<script>.py   (abrir PowerShell NUEVA para tener uv/git en PATH).
+Windows: NO usar MUJOCO_GL=egl (eso es Linux). multiprocessing 'spawn' -> el codigo
+ejecutable va dentro de if __name__ == "__main__".
 
 --------------------------------------------------------------------------------
 4) ARCHIVOS (en Pablo/)
 --------------------------------------------------------------------------------
-scene.py        : cocina custom + inyecta objetos garantizados + limpia mostrador.
+scene.py        : cocina custom + inyecta los objetos garantizados + limpia mostrador.
 detection.py    : OracleDetector (proyeccion 3D->2D, ~2px) + YoloDetector (stub).
-control.py      : PosServo = control por POSICION (move_to_many). (El control por
-                  velocidad del toolkit NO mueve 2 juntas a la vez; bug arreglado.)
+control.py      : PosServo = control por POSICION (sim.move_to_many). (El control por
+                  velocidad del toolkit NO movia 2 juntas a la vez; bug arreglado.)
 sim_setup.py    : start_kitchen() arranca el toolkit con la cocina custom (monkeypatch).
-phase1_lib.py   : aim_head() = Fase 1a (orienta base -> acerca con freno LiDAR ->
-                  barre cabeza -> centra con servo visual Broyden).
+phase1_lib.py   : aim_head() = Fase 1a. Flags do_base_orient/do_approach (en el agarre
+                  se llama con do_approach=False: solo busca/centra, sin ir recto).
 fase1.py        : entry Fase 1a. "uv run Pablo/fase1.py huevo [ver]".
-positioning.py  : Fase 1.5/agarre. remember_object (oraculo, solo verificar),
-                  localize_with_head_camera (POR CAMARA: profundidad+back-projection),
-                  compute_grasp_xy, goto_pose (nav con freno LiDAR), face_arm_at_object
-                  (gira para apuntar el brazo al objeto), stop_base, drive_forward,
-                  coarse_align_gripper (alinea gripper sobre el objeto).
-posicionar.py   : entry posicionamiento. "uv run Pablo/posicionar.py huevo [ver]".
-fase1b.py       : entry Fase 1b (localiza por camara + navega + altura segura + alinea
-                  + centra con camara del brazo). "uv run Pablo/fase1b.py huevo [ver]".
-grasp_lib.py    : position_for_grasp() + grasp_object() (centrar con wrist cam, bajar
-                  con profundidad-wrist, cerrar gripper, levantar, verificar).
-fase2.py        : entry AGARRE. "uv run Pablo/fase2.py huevo [ver]".
-_test_localize.py, _diag_kin.py, _diag_scene.py, test_*.py, ver_cocina.py : pruebas/diag.
+positioning.py  : nav/posicionamiento. Incluye:
+                  - localize_with_head_camera (POR CAMARA: profundidad + back-projection)
+                  - remember_object (oraculo, solo para VERIFICAR el error)
+                  - compute_grasp_xy, face_arm_at_object (gira para apuntar el brazo)
+                  - nav_to_parallel  <-- acercamiento PARALELO + esquive LiDAR + control
+                    de base con PISO MINIMO de comando (clave del fix de congelamiento)
+                  - turn_to, drive_forward, stop_base, lidar_front_min, _base_pose, _wrist_xy
+grasp_lib.py    : Fase 2 (AGARRE). position_for_grasp(...method=) deja al robot ARRIBA +
+                  PARALELO + apuntando + RECOGIDO. grasp_object(...method=) despacha:
+                  * "lateral" (default, recomendado): muneca HORIZONTAL, baja a la altura
+                    del objeto RECOGIDO (gripper sobre el pasillo, sin chocar), extiende
+                    el brazo y CIERRA usando la PROFUNDIDAD central de la muneca.
+                  * "top" (desde arriba): muneca abajo; lleva el CENTRO DE AGARRE
+                    (link_grasp_center, cinematica) SOBRE el objeto -> extiende arm_out
+                    (radial, preciso) ALTO, BAJA a la altura del objeto, CIERRA firme.
+                  Helpers: _gripper_z, _grasp_center (camara d405 fresca + offset
+                  calibrado GC_RADIAL=-0.05, GC_DZ=-0.174), _base_pulse, _close_and_lift.
+fase2.py        : entry AGARRE. "uv run Pablo/fase2.py huevo [top] [ver]" (default lateral).
+fase1b.py       : entry Fase 1b (localiza por camara + altura segura + wrist).
+posicionar.py   : entry posicionamiento.
+_test_nav.py    : prueba aislada de nav_to_parallel (imprime lateral/along, sin choque).
+_diag_base.py   : diagnostico de velocidad de la base.
+_diag_gripper.py: imprime el offset camara d405 -> link_grasp_center (calibracion).
 
 Cambios FUERA de Pablo/ (sim/toolkit, portables):
   stretch_mujoco/stretch_mujoco_simulator.py : move_to_many()/move_by_many() (fix multi-junta).
-  stretch_mujoco/mujoco_server.py            : pull_status expone camera_poses (pose-mundo cams).
+  stretch_mujoco/mujoco_server.py            : pull_status expone camera_poses (cams) Y AHORA
+                                               link_grasp_center / link_gripper_finger_* (pose-mundo).
   stretch_mujoco/datamodels/status_stretch_joints.py : + camera_poses.
   stretch_toolkit/sim.py        : _set_joint_velocities en batch (move_by_many).
-  stretch_toolkit/__init__.py   : NO aplicar start_translation en RoboCasa (si no, el robot
-                                  aparece lejos del mostrador).
-  stretch_toolkit/sim_config.json     : "detector":"oracle"; robocasa.enabled=true.
-  stretch_toolkit/sim_joint_config.json: base_forward speed ajustada (la base es lenta).
+  stretch_toolkit/__init__.py   : NO aplicar start_translation en RoboCasa.
+  stretch_toolkit/sim_config.json      : "detector":"oracle"; robocasa.enabled=true.
+  stretch_toolkit/sim_joint_config.json: base_forward speed 0.35 / accel 1.2;
+                                         base_counterclockwise speed 1.8 / accel 3.5.
 
 --------------------------------------------------------------------------------
-5) ESTADO: HECHO/VERIFICADO  vs  BLOQUEO/PENDIENTE
+5) ESTADO: HECHO/VERIFICADO  vs  LIMITACION/PENDIENTE
 --------------------------------------------------------------------------------
 HECHO Y VERIFICADO:
-  [x] Entorno Windows completo y validado (render, sim ~22 FPS, cocina + 4 camaras).
+  [x] Entorno Windows completo (render, sim, cocina + 4 camaras).
   [x] Escena custom: 5 objetos garantizados, estables, mostrador limpio.
-  [x] Deteccion oraculo verificada (~2 px vs color del cubo rojo).
-  [x] FIX bug multi-junta del sim (move_to_many) + PosServo.
-  [x] Fase 1a (cabeza): buscar + acercarse + centrar. PASS (huevo 0.045, cubo 0.036).
-  [x] Posicionamiento de agarre (paralelo, SIN CHOCAR con freno LiDAR).
-  [x] LOCALIZACION POR CAMARA (profundidad de la cabeza + back-projection). Verificado
-      ~3 cm vs verdad. La posicion ya NO sale de las coordenadas del sim.
-  [x] ALTURA SEGURA: sube el gripper por ENCIMA del mostrador antes de extender ->
-      NO choca con la barra. Verificado (gripper z > objeto z).
-  [x] Fase 2 (agarre) IMPLEMENTADA: grasp_lib.py/fase2.py. Centra con la camara del
-      brazo, baja con profundidad-wrist, cierra gripper, levanta, verifica z.
+  [x] Deteccion oraculo (~2 px). Localizacion POR CAMARA (~3 cm vs verdad).
+  [x] FIX bug multi-junta (move_to_many) + PosServo.
+  [x] Fase 1a (cabeza): buscar + acercarse + centrar.
+  [x] ALTURA SEGURA: sube el gripper por ENCIMA del mostrador antes de extender/rotar.
+  [x] ACERCAMIENTO PARALELO con esquive reactivo (nav_to_parallel). VERIFICADO en
+      _test_nav.py: llega paralelo, alcanzable (lateral ~0.5-0.6 m), sin choque.
+  [x] *** FIX SLUGGISHNESS/CONGELAMIENTO DE LA BASE *** (era el bloqueo #1):
+      el sim tiene FRICCION ESTATICA -> con comando de base CHICO la base se CONGELA.
+      Solucion: en los controladores de base, los comandos no-cero van por encima de un
+      PISO MINIMO decisivo (giro >=0.45, avance >=0.35) para vencer la friccion, y se
+      frena por distancia para no sobrepasar. Verificado 4/4 corridas: la nav llega
+      consistente, sin congelarse.
+  [x] AGARRE REESTRUCTURADO (sin choques ni barridos):
+      - Lateral: ya no choca (baja RECOGIDO sobre el pasillo y extiende; cierra por
+        profundidad central de la muneca, sin depender del RGB de la muneca).
+      - Desde arriba: lleva el CENTRO DE AGARRE (cinematica, link_grasp_center via la
+        pose FRESCA de la camara d405 + offset calibrado) SOBRE el objeto. Geometria
+        RESUELTA: en buenas corridas el centro de agarre queda a radial 4 mm / a-lo-largo
+        11 mm / dz 29 mm del objeto, y el huevo se levanta. Lecturas basura de pose
+        (pull_status a veces stale) FILTRADAS con un guard.
 
-BLOQUEO ACTUAL (lo unico que falta para cerrar el agarre):
-  [!] La BASE del sim no se alinea con precision. Para poner el gripper SOBRE el
-      objeto se necesita base precisa, y el control de velocidad de la base es
-      impreciso: lento->casi no se mueve; rapido->sobrepasa; lazo cerrado->diverge;
-      el signo de base_forward parece invertirse segun el heading. Error tipico
-      ~0.3-0.5 m a lo largo del mostrador (por la deriva del giro de face_arm).
-      Consecuencia: a veces el objeto NO entra a la camara del brazo y el agarre no
-      arranca. CUANDO la posicion cae bien, todo lo demas funciona (en una corrida el
-      huevo quedo a 2 cm en la wrist cam, listo para agarrar). Es problema de BASE,
-      no de vision ni de agarre.
+LIMITACION ACTUAL (lo unico que impide un agarre 100% confiable):
+  [!] EJE A LO LARGO DEL MOSTRADOR. Poner el gripper sobre el objeto necesita 2 ejes:
+      RADIAL (arm_out, PRECISO ~1 cm) y A-LO-LARGO del mostrador. El eje a-lo-largo SOLO
+      lo puede dar la BASE (el brazo solo telescopia radial), y la base del sim NO hace
+      ajuste FINO: con comando chico se CONGELA (friccion) y con comando decisivo
+      SOBREPASA, y al girar/trasladar DERIVA (corrompe la geometria si se mueve con el
+      brazo fuera -> ademas BARRE y tira los objetos del mostrador). face_arm (giro en
+      sitio) deja un residuo a-lo-largo VARIABLE ~1-9 cm. Cuando el residuo es < ~4 cm
+      el objeto entra en el span de los dedos (~9 cm) y se agarra; cuando es ~9 cm,
+      queda fuera y falla. => El agarre funciona de forma INTERMITENTE, limitado por la
+      PRECISION DE LA BASE del sim (no por la vision ni por la cinematica del brazo).
 
-PENDIENTE (despues de destrabar la base):
-  [ ] Cerrar el agarre de forma confiable (grasp_object ya esta escrito).
-  [ ] Fase 1b formal (centrar wrist sin perder con la cabeza) — ya casi cubierto.
-  [ ] Fase 3: llevar a la estufa/otra zona + abrir cajones (hay 5 joints "slide" =
-      cajones en layout 0). Anti-colision LiDAR.
+  Nota geometrica importante: un agarre PURAMENTE lateral (dedos colgando, brazo
+  horizontal a la altura del objeto) CHOCA contra el mostrador porque los objetos
+  sobresalen poco (~4 cm) y los dedos (~17 cm) golpean la superficie. Por eso, para
+  objetos sobre superficie plana, el metodo DESDE ARRIBA es el adecuado; el lateral
+  encaja mejor para objetos que sobresalen / al borde.
+
+PENDIENTE:
+  [ ] Hacer el eje a-lo-largo CONFIABLE. Opciones: (a) servo de base por ODOMETRIA fino
+      con pulsos calibrados + re-face tras la deriva (RECOGIDO+ALTO para no barrer);
+      (b) reducir la VARIANZA de face_arm; (c) en hardware real / WSL la base puede ser
+      mas precisa y el problema desaparece.
+  [ ] Fase 3: llevar a la estufa + abrir cajones (hay 5 joints "slide" = cajones en
+      layout 0). Subir brazo antes de rotar; anti-colision LiDAR.
   [ ] (Opcional) YOLO real ("detector":"yolo") + auto-etiquetado con el oraculo.
 
 --------------------------------------------------------------------------------
 6) HALLAZGOS TECNICOS CLAVE
 --------------------------------------------------------------------------------
-- Windows: NO egl. multiprocessing 'spawn' -> codigo ejecutable dentro de
-  if __name__ == "__main__".
-- BUG (arreglado): set_velocities NO movia 2+ juntas (move_by relativo se re-aplica
-  cada tick). Solucion: control por POSICION sim.move_to_many (PosServo). La BASE si
-  usa controller.set_velocities({base_forward, base_counterclockwise}).
-- Camara CABEZA (d435i): se entrega ROTADA (portrait, rot90(-1)). En servo de imagen
-  PAN controla ey, TILT controla ex. Centrado fino con Jacobiano online (Broyden).
-- Camara MUNECA (d405): SIN rotacion. Mirando abajo (wrist_pitch -1.5) ve el objeto
-  arriba y las pinzas abajo; para agarrar el objeto debe ir entre las pinzas.
-- Localizacion por camara: pixel mostrado->nativo (head): u=disp_y, v=(H_nat-1)-disp_x.
-  Back-proj: Xc=(u-cx)z/f, Yc=-(v-cy)z/f, Zc=-z; world=cam_pos+R@[Xc,Yc,Zc]. z=profundidad.
-- Cinematica Stretch: el BRAZO se extiende LATERAL hacia base -Y. Gripper ~0.34 m de
-  la base aun retraido. LiDAR: frente = indice 94 (360 rayos).
-- BASE: gira LENTO y DERIVA/translada al girar (no gira en el lugar). Frenar del todo
-  (stop_base) antes de girar. Control de velocidad impreciso para movimientos finos
-  (ver BLOQUEO). max base_forward en sim_joint_config.json.
-- Geometria layout0/style0: mostrador en x; objetos y~-0.35; pasillo y mas baja;
-  estufa x>2.8; sink a la izquierda. RoboCasa RANDOMIZA el spawn del robot.
+- BASE: la lentitud/congelamiento era FRICCION ESTATICA del sim, no la rampa ni PosServo.
+  Fix = PISO MINIMO de comando en los controladores de base (nav_to_parallel). La base
+  sigue SIN servir para ajuste FINO (cm): se congela chico / sobrepasa decisivo / deriva
+  al girar. Mover la base con el BRAZO EXTENDIDO sobre el mostrador BARRE y tira objetos.
+- AGARRE: localizar el objeto por CAMARA (cabeza) y conocer el GRIPPER por CINEMATICA es
+  lo correcto y suficiente para 2 de 3 grados (radial+altura). _grasp_center se calcula
+  con la pose FRESCA de la camara d405 (la del server a veces sale STALE -> guard que
+  descarta z implausibles). Offset camara->centro de agarre (muneca abajo): radial -0.05,
+  vertical -0.174 (medido con _diag_gripper.py).
+- Camara MUNECA (d405): RGB POCO FIABLE para centrar a la pose de agarre (oclusion de los
+  dedos + FOV recortado). La PROFUNDIDAD central (region fija, sin depender del RGB) SI es
+  fiable -> se usa para el cierre del lateral.
+- Camara CABEZA (d435i): portrait (rot90(-1)); en el servo de imagen PAN->ey, TILT->ex
+  (Jacobiano online Broyden). Back-proj localizacion: Xc=(u-cx)z/f, Yc=-(v-cy)z/f, Zc=-z;
+  world=cam_pos+R@[Xc,Yc,Zc]. pixel mostrado->nativo (head): u=disp_y, v=(H_nat-1)-disp_x.
+- Cinematica: el BRAZO se extiende LATERAL hacia base -Y_local; gripper ~0.34 m de la base
+  retraido. -Y_local=(sin th,-cos th) (radial); x_local=(cos th,sin th) (a-lo-largo).
+  LiDAR: frente = indice 94 (360 rayos).
+- Geometria layout0: mostrador en x; objetos y~-0.35; pasillo y mas baja; estufa x>2.8.
 
 --------------------------------------------------------------------------------
-7) COMO CORRER (desde C:\dev\StretchPAPO, PowerShell nueva)
+7) COMO CORRER (desde C:\dev\StretchPAPO, PowerShell nueva con uv en PATH)
 --------------------------------------------------------------------------------
-  uv run Pablo/fase1.py huevo [ver]      # Fase 1a: cabeza busca/centra
-  uv run Pablo/posicionar.py huevo [ver] # posicionarse paralelo sin chocar
-  uv run Pablo/fase1b.py huevo [ver]     # localizar por camara + altura segura + wrist
-  uv run Pablo/fase2.py huevo [ver]      # AGARRE (corre completo si la base alinea bien)
-  uv run Pablo/ver_cocina.py             # solo ver la cocina
+  uv run Pablo/fase1.py huevo [ver]        # Fase 1a: cabeza busca/centra
+  uv run Pablo/_test_nav.py huevo          # prueba el acercamiento PARALELO (sin choque)
+  uv run Pablo/fase2.py huevo [ver]        # AGARRE metodo LATERAL (default)
+  uv run Pablo/fase2.py huevo top [ver]    # AGARRE metodo DESDE ARRIBA
   objetos: huevo, tomate, cubo_rojo, cuchillo, plato
 Snapshots en Pablo/snaps/. 'ver' = ventana del visor (queda abierta al final).
 
 --------------------------------------------------------------------------------
-8) PROXIMO PASO SUGERIDO: arreglar la BASE (destraba el agarre)
+8) PROXIMO PASO SUGERIDO
 --------------------------------------------------------------------------------
-1) Entender el signo/escala real de sim.set_base_velocity (v_linear y omega) y la
-   traslacion-al-girar del modelo de base.
-2) Hacer un SERVO DE POSICION de base por ODOMETRIA (no velocidad open-loop), preciso
-   al cm, para colocar el gripper (wrist cam) sobre el objeto.
-3) O re-secuenciar: girar al heading del brazo ANTES y alinear el eje del mostrador
-   con un AVANCE RECTO al final (sin giro despues -> sin deriva).
-Con base precisa, grasp_object (ya implementado) cierra el agarre, y sigue la Fase 3.
+1) Confiabilizar el eje A-LO-LARGO del mostrador (lo unico que falta para agarre 100%):
+   servo de base por odometria/pulsos calibrados RECOGIDO+ALTO con re-face, o reducir la
+   varianza de face_arm. (En hardware real / WSL la base suele ser mas precisa.)
+2) Con el agarre confiable, Fase 3: llevar el objeto a la estufa (x>2.8) sin chocar
+   (subir brazo antes de rotar, freno LiDAR) y abrir cajones (joints slide del layout 0).
 ================================================================================

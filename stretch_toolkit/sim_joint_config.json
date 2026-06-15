@@ -20,7 +20,7 @@
     "wrist_pitch_up": 0.25,
     "wrist_roll_counterclockwise": 1.0,
     "gripper_open": 0.35,
-    "base_forward": 0.15,
-    "base_counterclockwise": 1.0
+    "base_forward": 1.2,
+    "base_counterclockwise": 3.5
   }
 }
