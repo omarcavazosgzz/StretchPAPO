@@ -65,26 +65,28 @@ def main():
     controller.stop(); time.sleep(0.5)
     servo.sync()
 
-    # 3) Fase 1a ya ACERCO la base al objeto (freno LiDAR). Solo giramos para que el
-    #    BRAZO apunte al objeto (giro ~90 deg, poca deriva). Si quedo lejos lateral,
-    #    nos acercamos un poco mas de frente antes de girar.
+    # 3) SUBIR EL BRAZO (RECOGIDO) ANTES de navegar/rotar -> al rotar libra el borde
+    #    salido de la barra del mostrador (si rota con el brazo abajo, choca).
+    lift_safe = float(np.clip(obj[2] + 0.18, 0.3, 1.05))
+    log(f"[1b] subo el brazo a altura segura (lift={lift_safe:.2f}) ANTES de rotar")
+    servo.move_to({"wrist_pitch_up": 0.0, "wrist_yaw_counterclockwise": 0.0,
+                   "arm_out": 0.0, "lift_up": lift_safe})
+    t = time.time()
+    while time.time() - t < 5 and (abs(controller.get_state()["lift_up"] - lift_safe) > 0.03
+                                   or abs(controller.get_state()["arm_out"]) > 0.03):
+        servo.hold(); time.sleep(1/30)
+
+    # 4) Navegar (si lejos) y girar para apuntar el brazo al objeto (ya en alto).
     bx, by, _ = _base_pose(controller)
     if float(np.hypot(obj[0] - bx, obj[1] - by)) > 0.75:
         tx, ty = compute_grasp_xy(obj[:2], (bx, by), grasp_dist=0.55)
         goto_pose(controller, tx, ty, None, log=log)
     face_arm_at_object(controller, obj[:2], log=log)
 
-    # 4) ALTURA SEGURA: primero SUBIR el gripper por encima del mostrador (con el brazo
-    #    recogido), LUEGO extender por arriba, LUEGO apuntar la muneca abajo.
+    # 5) Ya rotado y en alto: extender el brazo por ARRIBA y apuntar la muneca abajo.
     bx, by, _ = _base_pose(controller)
     base_obj = float(np.hypot(obj[0] - bx, obj[1] - by))
-    lift_safe = float(np.clip(obj[2] + 0.18, 0.3, 1.05))     # gripper bien por ENCIMA
     arm_target = float(np.clip(base_obj - GRIPPER_HOME_OFFSET, 0.0, 0.5))
-    log(f"[1b] altura segura: subo lift={lift_safe:.2f} (objeto z={obj[2]:.2f}) ANTES de extender")
-    servo.move_to({"wrist_pitch_up": 0.0, "wrist_yaw_counterclockwise": 0.0, "lift_up": lift_safe})
-    t = time.time()
-    while time.time() - t < 5 and abs(controller.get_state()["lift_up"] - lift_safe) > 0.03:
-        servo.hold(); time.sleep(1/30)
     log(f"[1b] extiendo el brazo por ARRIBA: arm_out={arm_target:.2f}")
     servo.move_to({"arm_out": arm_target})
     t = time.time()

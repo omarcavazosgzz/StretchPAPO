@@ -44,20 +44,27 @@ def position_for_grasp(controller, sim, det, model, servo, body, HEAD, HEAD_D, W
         f"[verdad ({truth[0]:.2f},{truth[1]:.2f},{truth[2]:.2f})]")
 
     controller.stop(); time.sleep(0.4); servo.sync()
+
+    # SUBIR EL BRAZO ANTES de navegar/rotar (con el brazo RECOGIDO): si rota con el
+    # brazo abajo, al terminar de girar choca con el borde salido de la barra del
+    # mostrador. Lo subimos por ENCIMA primero, retraido y compacto.
+    lift_safe = float(np.clip(obj[2] + 0.16, 0.3, 1.05))
+    log(f"[g] subo el brazo a altura segura (lift={lift_safe:.2f}) ANTES de rotar")
+    servo.move_to({"gripper_open": 0.5, "wrist_yaw_counterclockwise": 0.0,
+                   "wrist_pitch_up": 0.0, "arm_out": 0.0, "lift_up": lift_safe})
+    _wait_joint(controller, "lift_up", lift_safe, servo=servo)
+    _wait_joint(controller, "arm_out", 0.0, servo=servo)
+
     bx, by, _ = _base_pose(controller)
     if float(np.hypot(obj[0] - bx, obj[1] - by)) > 0.75:
         tx, ty = compute_grasp_xy(obj[:2], (bx, by), grasp_dist=0.55)
         goto_pose(controller, tx, ty, None, log=log)
     face_arm_at_object(controller, obj[:2], log=log)
 
-    # altura segura: subir gripper por ENCIMA del mostrador, extender, muneca abajo
+    # ya ROTADO y EN ALTO: extender el brazo (por encima del mostrador) y muneca abajo
     bx, by, _ = _base_pose(controller)
     base_obj = float(np.hypot(obj[0] - bx, obj[1] - by))
-    lift_safe = float(np.clip(obj[2] + 0.16, 0.3, 1.05))
     arm0 = float(np.clip(base_obj - GRIPPER_HOME_OFFSET, 0.0, 0.5))
-    servo.move_to({"gripper_open": 0.5, "wrist_yaw_counterclockwise": 0.0,
-                   "wrist_pitch_up": 0.0, "lift_up": lift_safe})
-    _wait_joint(controller, "lift_up", lift_safe, servo=servo)
     servo.move_to({"arm_out": arm0})
     _wait_joint(controller, "arm_out", arm0, servo=servo)
     servo.move_to({"wrist_pitch_up": -1.5})
