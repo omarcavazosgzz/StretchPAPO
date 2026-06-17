@@ -80,10 +80,47 @@ def compute_grasp_xy(obj_xy, robot_xy, grasp_dist=0.55):
     return ox, oy + side * grasp_dist
 
 
-def face_arm_at_object(controller, obj_xy, log=print, iters=4):
+def look_at_object(controller, sim, servo, obj_xyz, head_mjcf="d435i_camera_rgb",
+                   tilt_min=-1.3, tilt_max=0.3):
+    """Apunta la CAMARA DE LA CABEZA al objeto (posicion mundo) ajustando head_pan y
+    head_tilt. Sirve para que la cabeza SIGA el objeto mientras la base GIRA (no lo pierde
+    de vista durante el alineado del gripper). Usa la pose-mundo de la camara (del sim) +
+    la posicion del objeto (localizada por camara): calcula el azimut/elevacion del objeto
+    respecto al eje optico y corrige los angulos de la cabeza. Una llamada = un ajuste."""
+    try:
+        cam = sim.pull_status().camera_poses.get(head_mjcf)
+    except Exception:
+        return
+    if cam is None:
+        return
+    c = np.array(cam["pos"], float)
+    R = np.array(cam["xmat"], float).reshape(3, 3)
+    fwd = -R[:, 2]                                   # la camara de MuJoCo mira por -z
+    d = np.array(obj_xyz, float) - c
+    n = np.linalg.norm(d)
+    if n < 1e-6:
+        return
+    d /= n
+    az = _wrap(np.arctan2(d[1], d[0]) - np.arctan2(fwd[1], fwd[0]))     # horizontal -> pan
+    el = float(np.arcsin(np.clip(d[2], -1, 1)) - np.arcsin(np.clip(fwd[2], -1, 1)))  # -> tilt
+    s = controller.get_state()
+    new_pan = float(np.clip(s["head_pan_counterclockwise"] + az, -4.0, 1.7))
+    new_tilt = float(np.clip(s["head_tilt_up"] + el, tilt_min, tilt_max))
+    servo.move_to({"head_pan_counterclockwise": new_pan, "head_tilt_up": new_tilt})
+
+
+def face_arm_at_object(controller, obj_xy, log=print, iters=4,
+                       sim=None, servo=None, obj_z=0.95):
     """Gira la base para que el BRAZO (sale hacia base -Y_local) apunte al objeto.
     ITERA porque la base DERIVA al girar (recalcula el heading desde la pose real
-    en cada vuelta hasta converger). -Y_local=u(dir base->obj) => th=atan2(ux,-uy)."""
+    en cada vuelta hasta converger). -Y_local=u(dir base->obj) => th=atan2(ux,-uy).
+    Si se pasan sim+servo, la CAMARA DE LA CABEZA SIGUE al objeto mientras gira."""
+    look = None
+    if sim is not None and servo is not None:
+        obj_xyz = [float(obj_xy[0]), float(obj_xy[1]), float(obj_z)]
+        def look():
+            servo.hold()                            # mantiene el brazo recogido/alto
+            look_at_object(controller, sim, servo, obj_xyz)
     ttheta = None
     for _ in range(iters):
         bx, by, th = _base_pose(controller)
@@ -94,8 +131,11 @@ def face_arm_at_object(controller, obj_xy, log=print, iters=4):
         ttheta = float(np.arctan2(ux / n, -uy / n))
         if abs(_wrap(ttheta - th)) < 0.06:
             break
-        turn_to(controller, ttheta, log=log)
-    log(f"[pos] brazo apuntando al objeto (heading={np.degrees(ttheta):.0f}deg)")
+        turn_to(controller, ttheta, log=log, on_turn=look)
+    if look is not None:                            # ultimo ajuste de la cabeza al terminar
+        look()
+    log(f"[pos] brazo apuntando al objeto (heading={np.degrees(ttheta):.0f}deg)"
+        f"{' + cabeza siguiendo' if look else ''}")
     return ttheta
 
 
@@ -232,9 +272,11 @@ def stop_base(controller, timeout=4.0):
         time.sleep(0.1)
 
 
-def turn_to(controller, target_theta, tol=0.05, timeout=18.0, log=None):
+def turn_to(controller, target_theta, tol=0.05, timeout=18.0, log=None, on_turn=None):
     """Gira la base a un heading absoluto. Proporcional (frena cerca del objetivo
-    para no oscilar/derivar); timeout amplio porque la base gira lento."""
+    para no oscilar/derivar); timeout amplio porque la base gira lento.
+    on_turn(): callback opcional llamado en cada iteracion (p.ej. para que la cabeza
+    SIGA al objeto mientras la base gira)."""
     t0 = time.time()
     while time.time() - t0 < timeout:
         _, _, th = _base_pose(controller)
@@ -244,6 +286,8 @@ def turn_to(controller, target_theta, tol=0.05, timeout=18.0, log=None):
         # base_forward=0 EXPLICITO: nada de avance mientras gira (evita deriva)
         controller.set_velocities({"base_counterclockwise": float(np.clip(BASE_YAW_SIGN * 1.5 * herr, -1, 1)),
                                    "base_forward": 0.0})
+        if on_turn is not None:
+            on_turn()
         time.sleep(DT)
     stop_base(controller, timeout=2.0)
     return abs(_wrap(target_theta - _base_pose(controller)[2])) < tol * 2.5

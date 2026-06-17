@@ -17,7 +17,17 @@
      CIERRE REAL (entre las puntas rubber_tip).
    - Cierre del modelo era flojo (apretaba 0.55cm/lado al cubo 5cm -> resbalaba) -> se
      amplio finger_slide a -0.06 en stretch.xml (cierre firme). Objeto DENTRO de los dedos.
- Video de la prueba: Pablo/snaps/agarre_lateral.mp4 (Pablo/_record_grasp.py).
+ NUEVO ademas:
+   - La CAMARA DE LA CABEZA SIGUE al objeto mientras la base GIRA para alinear (look_at_object
+     en positioning.py; turn_to acepta on_turn; face_arm lo usa con sim/servo).
+   - REINTENTOS de agarre: grasp_with_retries (abre, recoge, re-localiza y reintenta si
+     falla). El cierre del cubo es ~50% por intento (limite del sim); 3 reintentos ~90%.
+   - FASE 3 (mover el objeto a otra zona, p.ej. cerca del FREGADERO): fase3.py. Agarra ->
+     recoge el brazo SIN rotar la muneca (si no, el cubo se zafa) -> traslada por el mostrador
+     con base_translate (preciso; el nav reactivo zafaba el cubo) -> coloca (place_object_lateral).
+     VERIFICADO: COLOCADO OK (cubo de x~2.5 a ~2.13 cerca del fregadero, z=0.94 sobre el mostrador).
+ Videos: Pablo/demos/agarre_lateral.mp4 (agarre) y Pablo/demos/fase3_fregadero.mp4 (llevar
+ al fregadero). Grabador: Pablo/_record_grasp.py / Pablo/fase3.py.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -273,7 +283,11 @@ ESTA SESION fue en UBUNTU por SSH, HEADLESS (sin pantalla) con render EGL:
   env : MUJOCO_GL=egl  (Linux headless; en Windows NO usar egl)
   spawn fijo (reproducible): STRETCH_FIXED_SPAWN="2.25,-0.8,90"  (x,y,grados)
   ej:  STRETCH_FIXED_SPAWN="2.25,-0.8,90" MUJOCO_GL=egl .venv/bin/python Pablo/fase2.py cubo_rojo
-  video: ...python Pablo/_record_grasp.py cubo_rojo   -> Pablo/snaps/agarre_lateral.mp4
+  video agarre: ...python Pablo/_record_grasp.py cubo_rojo  -> Pablo/snaps/agarre_lateral.mp4
+  FASE 3 (llevar al fregadero): ...python Pablo/fase3.py cubo_rojo  -> Pablo/snaps/fase3_llevar.mp4
+       (destino por defecto x=2.13,y=-0.33; cambiar con argv: fase3.py cubo_rojo 2.13 -0.33)
+       NOTA: spawn "2.45,-0.95,90" estaciona mejor que "2.25,-0.8,90" (agarre mas fiable).
+  fase2/fase3 REINTENTAN el agarre solos (grasp_with_retries); para 1 solo intento usa _diag_close.
 
 En Windows (como antes), desde C:\dev\StretchPAPO con uv en PATH:
   uv run Pablo/fase2.py cubo_rojo [top] [ver]

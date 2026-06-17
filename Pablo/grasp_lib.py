@@ -85,8 +85,9 @@ def position_for_grasp(controller, sim, det, model, servo, body, HEAD, HEAD_D, W
     nav_to_parallel(controller, sim, obj[:2], standoff=0.5, log=log)
     controller.stop(); time.sleep(0.3); servo.sync()
 
-    # 4) Girar para que el brazo apunte al objeto (ya en alto -> libra el borde).
-    face_arm_at_object(controller, obj[:2], log=log)
+    # 4) Girar para que el brazo apunte al objeto (ya en alto -> libra el borde). La CAMARA
+    #    DE LA CABEZA SIGUE al objeto mientras la base gira (no lo pierde de vista).
+    face_arm_at_object(controller, obj[:2], log=log, sim=sim, servo=servo, obj_z=obj[2])
 
     if method == "top":
         # ---- preparacion AGARRE DESDE ARRIBA: muneca abajo, RECOGIDO y ALTO. _grasp_top
@@ -240,6 +241,28 @@ def grasp_object(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj,
     if method == "top":
         return _grasp_top(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj, log)
     return _grasp_lateral(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj, log)
+
+
+def grasp_with_retries(controller, sim, det, model, servo, body, HEAD, HEAD_D, WRIST, WRIST_D,
+                       method="lateral", retries=3, log=print):
+    """Posiciona y agarra, REINTENTANDO si el agarre falla (el cierre lateral del cubo es
+    marginal en el sim: ~mitad de las veces sale a la primera). Al fallar: abre el gripper,
+    recoge el brazo y vuelve a localizar + posicionar + agarrar. Con ~50% por intento, 3
+    reintentos dan ~90% de exito. Returns (obj_world, grabbed)."""
+    obj = None
+    for attempt in range(1, retries + 1):
+        log(f"[grasp] ===== intento de agarre {attempt}/{retries} =====")
+        obj, ok = position_for_grasp(controller, sim, det, model, servo, body,
+                                     HEAD, HEAD_D, WRIST, method=method, log=log)
+        if ok and grasp_object(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj,
+                               method=method, log=log):
+            log(f"[grasp] AGARRADO en el intento {attempt}")
+            return obj, True
+        # fallo -> soltar/recoger y reintentar (re-localiza por si el objeto se movio)
+        log("[grasp] fallo; abro, recojo y reintento...")
+        servo.move_to({"gripper_open": 0.5, "wrist_pitch_up": 0.0, "arm_out": 0.0})
+        _wait_joint(controller, "arm_out", 0.0, tol=0.03, timeout=4, servo=servo)
+    return obj, False
 
 
 # ----------------------------------------------------------------------------------
@@ -409,6 +432,81 @@ def _grasp_lateral(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj
 
     # 7) CERRAR firme y LEVANTAR (el objeto esta entre los dedos a esta pose)
     return _close_and_lift(controller, sim, servo, body, log)
+
+
+def place_object_lateral(controller, sim, servo, place_xyz, log=print):
+    """Coloca el objeto SOSTENIDO en place_xyz sobre el mostrador. El robot ya debe estar
+    PARALELO y apuntando al punto. CLAVE: mantiene la muneca INCLINADA todo el tiempo (NO la
+    rota a horizontal, eso gira el cubo y lo zafa). Pasos: sube ALTO (puntas inclinadas libran
+    el mostrador) -> extiende sobre el punto -> baja a la altura -> ABRE -> retrae."""
+    from positioning import _base_pose
+    place = np.array(place_xyz, float)
+    place_xy = place[:2]
+
+    def gct():
+        return _grasp_center_true(controller, sim, fallback_mode="lateral")
+
+    def errs():
+        gc = gct()
+        bx, by, th = _base_pose(controller)
+        rad = np.array([np.sin(th), -np.cos(th)])
+        return gc, float((place_xy - gc[:2]) @ rad), float(place[2] - gc[2])
+
+    def move_lift(z_target):
+        for _ in range(20):
+            gc = gct(); dz = z_target - gc[2]
+            if abs(dz) < 0.012:
+                break
+            lf = controller.get_state()["lift_up"]; nl = float(np.clip(lf + dz, 0.12, 1.05))
+            if abs(nl - lf) < 0.005:
+                break
+            servo.move_to({"lift_up": nl})
+            _wait_joint(controller, "lift_up", nl, tol=0.015, timeout=2.5, servo=servo)
+
+    # 1) SUBIR ALTO manteniendo la muneca INCLINADA (las puntas inclinadas libran el mostrador
+    #    porque el centro de agarre va alto). No se toca wrist_pitch (sigue en -PITCH_LAT).
+    log("[place] subo sobre el mostrador (muneca sigue inclinada, sin soltar)")
+    move_lift(place[2] + HIGH_CLEAR + 0.04)
+
+    # 2) extender sobre el punto (radial ~ 0). Alto -> las puntas inclinadas no chocan.
+    log("[place] extiendo sobre el punto de colocacion...")
+    for _ in range(8):
+        gc, d_rad, _ = errs()
+        if abs(d_rad) < 0.02:
+            break
+        a = controller.get_state()["arm_out"]; na = float(np.clip(a + d_rad, 0.0, 0.5))
+        if abs(na - a) < 0.005:
+            break
+        servo.move_to({"arm_out": na})
+        _wait_joint(controller, "arm_out", na, tol=0.02, timeout=3, servo=servo)
+
+    # 3) bajar EN VERTICAL a la altura de colocar (un poco arriba para soltar suave)
+    log("[place] bajando a colocar...")
+    prev = None
+    for _ in range(14):
+        gc, _, dz = errs()
+        if abs(dz) < 0.02 or prev == round(dz, 3):
+            break
+        prev = round(dz, 3)
+        lf = controller.get_state()["lift_up"]; nl = float(np.clip(lf + dz, 0.12, 1.05))
+        if abs(nl - lf) < 0.004:
+            break
+        servo.move_to({"lift_up": nl})
+        _wait_joint(controller, "lift_up", nl, tol=0.015, timeout=2.5, servo=servo)
+
+    # 4) ABRIR (soltar el objeto)
+    log("[place] abriendo el gripper (soltar)...")
+    servo.move_to({"gripper_open": 0.5})
+    _wait_joint(controller, "gripper_open", 0.5, tol=0.1, timeout=3, servo=servo)
+    time.sleep(0.6)
+
+    # 5) RETRAER el brazo + subir (ya solto -> ya puede rotar la muneca)
+    log("[place] retraigo el brazo")
+    servo.move_to({"arm_out": 0.0})
+    _wait_joint(controller, "arm_out", 0.0, tol=0.03, timeout=4, servo=servo)
+    lf = controller.get_state()["lift_up"]
+    servo.move_to({"lift_up": float(np.clip(lf + 0.10, 0.2, 1.05)), "wrist_pitch_up": 0.0})
+    log("[place] objeto colocado")
 
 
 # ----------------------------------------------------------------------------------
