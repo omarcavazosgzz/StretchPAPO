@@ -42,6 +42,11 @@ PITCH_LAT = 0.6
 # del eje de cierre (entre las puntas), el agarre saldria DEBIL (de orilla) y se soltaria al
 # mover la base. _grasp_lateral aborta (reintento) si se supera. ~0.7cm.
 FIRM_TOL = 0.007
+# Cuanto bajar (vertical) tras posicionar, para agarrar mas hacia el centro del cuerpo (los
+# dedos quedaban altos -> el objeto pivotaba al mover). OJO: mucho rompe objetos bajos/curvos
+# como el HUEVO (lo agarra por abajo y no lo levanta). 0.6cm: ayuda al cubo sin romper el huevo.
+# Lo que mas ayuda al traslado es la RAMPA de velocidad de la base (fase3), no esto.
+GRIP_LOWER = 0.006
 
 
 def _wait_joint(controller, key, target, tol=0.03, timeout=5.0, servo=None):
@@ -430,6 +435,16 @@ def _grasp_lateral(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj
         for k, v in cmd.items():
             _wait_joint(controller, "lift_up" if k == "lift_up" else "arm_out", v,
                         tol=0.02, timeout=2.5, servo=servo)
+
+    # 6.3) BAJAR un poco mas (SOLO vertical, sin re-extender el brazo -> no se atora) para
+    #      agarrar por el CENTRO del cuerpo y no por la parte alta. Un agarre por el cuerpo
+    #      medio es ESTABLE al trasladar; por la tapa el objeto pivota y se ZAFA al mover la base.
+    lf = controller.get_state()["lift_up"]
+    nl = float(np.clip(lf - GRIP_LOWER, 0.12, 1.05))
+    if abs(nl - lf) > 0.003:
+        log(f"[gL] bajando {GRIP_LOWER*100:.1f}cm mas para agarrar al CENTRO del cuerpo...")
+        servo.move_to({"lift_up": nl})
+        _wait_joint(controller, "lift_up", nl, tol=0.012, timeout=2.5, servo=servo)
 
     gc, d_rad, d_al, dz = errs()
     log(f"[gL] pre-cierre: radial={d_rad:+.3f} a-lo-largo={d_al:+.3f} dz={dz:+.3f}")

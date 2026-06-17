@@ -108,20 +108,31 @@ def main():
         #      tambien. El robot esta PARALELO -> base_forward corre A-LO-LARGO del mostrador.
         from positioning import stop_base
         state["phase"] = "trasladar (suave) cerca del fregadero"
-        log(f"[fase3] trasladando (suave) a lo largo del mostrador hacia x={place_x:.2f}...")
+        log(f"[fase3] trasladando (suave, con rampa) a lo largo del mostrador hacia x={place_x:.2f}...")
+        # CLAVE: RAMPEAR la velocidad (acelerar y frenar GRADUAL). Comandar la velocidad de
+        # golpe da un tiron: el mastil/brazo da LATIGAZO y avienta el cubo. Subir/bajar la
+        # velocidad poco a poco = aceleracion suave = el cubo no se zafa.
         DT = 1.0 / 30
+        VMAX = 0.42          # velocidad de crucero (normalizada)
+        VMIN = 0.16          # velocidad minima de avance (vence friccion)
+        RAMP = 0.9           # segundos para llegar a VMAX (rampa)
+        v = 0.0
         t0 = time.time(); last = 0.0
-        while time.time() - t0 < 16:
+        while time.time() - t0 < 24:
             s = controller.get_state()
             bx = s["base_x"]; dx = place_x - bx
-            if abs(dx) < 0.04:
+            if abs(dx) < 0.05:
                 break
             c = float(np.cos(s["base_theta"]))      # base_forward+ mueve base_x en +cos(th)
             sgn = 1.0 if (dx * c) >= 0 else -1.0     # signo de base_forward para acercarse
-            controller.set_velocities({"base_forward": sgn * 0.45, "base_counterclockwise": 0.0})
+            if abs(dx) < 0.22:                       # cerca -> FRENAR gradual
+                v = max(VMIN, v - VMAX * DT / RAMP)
+            else:                                    # lejos -> ACELERAR gradual hasta VMAX
+                v = min(VMAX, v + VMAX * DT / RAMP)
+            controller.set_velocities({"base_forward": sgn * v, "base_counterclockwise": 0.0})
             servo.hold()                            # mantiene brazo+gripper (cubo sujeto)
             if time.time() - last > 1.0:
-                log(f"[fase3]   traslado: base_x={bx:.3f} (objetivo {place_x:.2f})")
+                log(f"[fase3]   traslado: base_x={bx:.3f} v={v:.2f} (objetivo {place_x:.2f})")
                 last = time.time()
             time.sleep(DT)
         stop_base(controller); servo.sync()

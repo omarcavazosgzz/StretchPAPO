@@ -14,7 +14,12 @@
       <geom mass="0" solref="0.005 1"/>
       <general biastype="affine"/>
       <default class="wheel">
-        <joint axis="0 0 1" damping="0.1" frictionloss="35" armature="0.1" stiffness="0.01"/>
+        <!-- frictionloss bajado 35 -> 2: 35 N.m de friccion seca por rueda (~700N en el
+             contacto, vs ~245N de peso) hacia que la base se moviera a TIRONES (stick-slip):
+             se quedaba pegada y luego daba un brinco. Eso zafaba el objeto agarrado al
+             trasladar. Con 2 N.m la base se mueve SUAVE y el control de velocidad la sostiene
+             quieta igual. (Optimizacion del modelo del sim, Pablo_v2.) -->
+        <joint axis="0 0 1" damping="0.1" frictionloss="2" armature="0.1" stiffness="0.01"/>
         <velocity gear="3" kv="20" ctrlrange="-100 100"/>
       </default>
       <default class="lift">
