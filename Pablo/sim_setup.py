@@ -9,9 +9,29 @@ Asi reusamos controller.set_velocities (multi-junta), get_state, LiDAR, etc.
 """
 import os
 import json
+import math
 from pathlib import Path
 
 CONFIG = Path(__file__).resolve().parent.parent / "stretch_toolkit" / "sim_config.json"
+
+
+def _spawn_pose_from_env():
+    """Pose de spawn FIJA del robot para pruebas REPRODUCIBLES (RoboCasa por defecto
+    coloca el robot en un punto ALEATORIO de la cocina cada corrida, lo que hace que
+    el agarre sea inconsistente/no testeable). Opt-in via env var:
+        STRETCH_FIXED_SPAWN="x,y,theta_deg"
+    Devuelve el dict {pos, quat} que espera model_generation_wizard (quat = x y z w),
+    o None si no esta seteada (comportamiento original: spawn aleatorio de RoboCasa)."""
+    raw = os.environ.get("STRETCH_FIXED_SPAWN", "").strip()
+    if not raw:
+        return None
+    x, y, deg = (float(v) for v in raw.split(","))
+    th = math.radians(deg)
+    # OJO: el quat se escribe TAL CUAL al atributo quat del body de MuJoCo, que es
+    # orden (w, x, y, z) -- NO (x,y,z,w) como dice el docstring del wizard. Con el
+    # orden equivocado el robot aparece volteado y la fisica EXPLOTA (vi z=-5718).
+    qw, qz = math.cos(th / 2.0), math.sin(th / 2.0)   # rotacion th alrededor de z
+    return {"pos": f"{x} {y} 0", "quat": f"{qw} 0 0 {qz}"}
 
 
 def start_kitchen(cameras=("cam_d435i_rgb", "cam_d405_rgb"),
@@ -40,8 +60,11 @@ def start_kitchen(cameras=("cam_d435i_rgb", "cam_d405_rgb"),
     import stretch_mujoco.robocasa_gen as rg
     from scene import inject_objects
     _orig = rg.model_generation_wizard
+    _spawn = _spawn_pose_from_env()
 
     def _patched(*a, **k):
+        if _spawn is not None and k.get("robot_spawn_pose") is None:
+            k["robot_spawn_pose"] = _spawn      # spawn FIJO -> pruebas reproducibles
         model, xml, info = _orig(*a, **k)
         xml2 = inject_objects(xml)
         return mujoco.MjModel.from_xml_string(xml2), xml2, info

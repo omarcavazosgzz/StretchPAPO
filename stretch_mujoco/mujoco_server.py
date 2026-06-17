@@ -616,7 +616,8 @@ class MujocoServer:
                 }
         # Pose-mundo del CENTRO DE AGARRE de los dedos (y de la camara d405) para poder
         # posicionar los DEDOS (no la camara) sobre el objeto al agarrar desde arriba.
-        for bname in ("link_grasp_center", "link_gripper_finger_left", "link_gripper_finger_right"):
+        for bname in ("link_grasp_center", "link_gripper_finger_left", "link_gripper_finger_right",
+                      "rubber_tip_left", "rubber_tip_right"):
             try:
                 b = self.mjdata.body(bname)
                 camera_poses[bname] = {"pos": [float(v) for v in b.xpos],

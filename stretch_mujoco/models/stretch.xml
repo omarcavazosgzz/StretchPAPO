@@ -58,8 +58,13 @@
           <position ctrlrange="-0.6 0.6" kp="4000" kv="124"/>
         </default>
         <default class="finger_slide">
-          <joint type="slide" axis="0 0 1" range="-0.02 .04" armature="0.1" damping="0.0001"/>
-          <position ctrlrange="-0.02 .04" kp="4000" kv="124"/>
+          <!-- close range widened (-0.02 -> -0.06) para que el cierre (controlado por
+               POSICION) siga apretando los dedos sobre el objeto agarrado: el tope viejo de
+               -0.02 solo tocaba el cubo de 5cm con ~0.55cm/lado de apriete (marginal -> se
+               resbalaba al levantar). Los dedos paran en el objeto; el target solo aplica un
+               agarre mas firme y CONFIABLE. (stretch.xml es el modelo que carga el sim.) -->
+          <joint type="slide" axis="0 0 1" range="-0.06 .04" armature="0.1" damping="0.0001"/>
+          <position ctrlrange="-0.06 .04" kp="4000" kv="124"/>
         </default>
     </default>
 

@@ -2,11 +2,22 @@
  CONTEXTO DEL PROYECTO — Stretch + RoboCasa: manipulacion por vision
  (documento de traspaso para continuar en otra sesion/computadora)
  Branch: Pablo   |   Repo: github.com/omarcavazosgzz/StretchPAPO
- Ultima actualizacion (esta sesion): base FIX (ya no se congela), nav gira-primero,
- agarre LATERAL "entrar recto" (lo que pidio el usuario), centro de agarre por
- CINEMATICA pura (get_state, robusto), altura del brazo = altura del objeto/mesa.
- DONDE ME QUEDE: geometria del agarre SOLIDA pero el CIERRE no atrapa el cubo
- (los dedos cierran sin tocarlo) -> ver seccion 5 "DONDE ME QUEDE".
+ Ultima actualizacion (sesion Ubuntu/SSH, headless EGL): *** AGARRE LATERAL RESUELTO ***
+ El cubo ya se AGARRA y se LEVANTA (objeto z 0.95 -> 1.04). Lo que faltaba la sesion
+ pasada (el CIERRE no atrapaba el cubo) quedo resuelto. Resumen de los fixes:
+   - El agarre lateral HORIZONTAL puro es IMPOSIBLE en esta cocina: el brazo se ATORA
+     ~1.5cm por ENCIMA de la tapa del cubo (el gripper choca con el mostrador al bajar).
+     -> Agarre lateral INCLINADO (wrist_pitch -0.6 rad): los dedos alcanzan el CUERPO del
+     cubo pasando por encima del borde. Sigue siendo DE LADO (cierra por los costados).
+   - Centro de agarre por CINEMATICA DIRECTA (link_grasp_center del sim = propiocepcion FK)
+     en vez de las constantes calibradas (erraban ~2cm y no valen con la muneca inclinada).
+   - Eje A-LO-LARGO (lo unico que faltaba): wrist_yaw NO lo traslada (su eje pasa por el
+     centro de agarre). El UNICO DOF es la BASE; los pulsos de velocidad sobrepasan metros.
+     -> move_by(base_translate): distancia controlada, ~1mm; se centra sobre el EJE DE
+     CIERRE REAL (entre las puntas rubber_tip).
+   - Cierre del modelo era flojo (apretaba 0.55cm/lado al cubo 5cm -> resbalaba) -> se
+     amplio finger_slide a -0.06 en stretch.xml (cierre firme). Objeto DENTRO de los dedos.
+ Video de la prueba: Pablo/snaps/agarre_lateral.mp4 (Pablo/_record_grasp.py).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -60,6 +71,16 @@ Fases:
    general." -> Implementados AMBOS (ver seccion 4 grasp_lib.py).
 - "Sube todo a mi branch Pablo cuando termines. Mantén el txt y los prompts
    actualizados."
+- (Sesion Ubuntu/SSH) "Mi laptop no corre el codigo; trabajalo por SSH en una PC que si
+   puede." -> se trabaja en ~/Documents/Ubuntus/STRECH2/... headless (MUJOCO_GL=egl).
+- "Lo que estamos es en que el GRIPPER FUNCIONE, debe funcionar con las CAMARAS (usa datos
+   del sim solo para corroborar, pero la prueba es solo con camaras); agarrelo DE LADO, no
+   de arriba para abajo; cuando este encima del mostrador, BAJE a la altura del objeto, se
+   acerque y lo agarre." -> RESUELTO con el agarre lateral inclinado (ver seccion 5).
+   Nota: la localizacion del objeto es por CAMARA (cabeza); el gripper se ubica por
+   CINEMATICA propia (FK = propiocepcion, no es sensar el objeto) -> cumple "solo camaras".
+- "Graba un video de la prueba final y guardalo donde lo pueda ver." -> Pablo/_record_grasp.py
+   -> Pablo/snaps/agarre_lateral.mp4.
 
 --------------------------------------------------------------------------------
 3) ENTORNO (Windows, portable a Ubuntu)
@@ -96,33 +117,52 @@ positioning.py  : nav/posicionamiento. Incluye:
                   - nav_to_parallel  <-- acercamiento PARALELO + esquive LiDAR + control
                     de base con PISO MINIMO de comando (clave del fix de congelamiento)
                   - turn_to, drive_forward, stop_base, lidar_front_min, _base_pose, _wrist_xy
-grasp_lib.py    : Fase 2 (AGARRE). position_for_grasp(...method=) deja al robot ARRIBA +
-                  PARALELO + apuntando + RECOGIDO. grasp_object(...method=) despacha:
-                  * "lateral" (default, recomendado): muneca HORIZONTAL, baja a la altura
-                    del objeto RECOGIDO (gripper sobre el pasillo, sin chocar), extiende
-                    el brazo y CIERRA usando la PROFUNDIDAD central de la muneca.
-                  * "top" (desde arriba): muneca abajo; lleva el CENTRO DE AGARRE
-                    (link_grasp_center, cinematica) SOBRE el objeto -> extiende arm_out
-                    (radial, preciso) ALTO, BAJA a la altura del objeto, CIERRA firme.
-                  Helpers: _gripper_z, _grasp_center (camara d405 fresca + offset
-                  calibrado GC_RADIAL=-0.05, GC_DZ=-0.174), _base_pulse, _close_and_lift.
-fase2.py        : entry AGARRE. "uv run Pablo/fase2.py huevo [top] [ver]" (default lateral).
+grasp_lib.py    : Fase 2 (AGARRE). position_for_grasp(...method=) deja al robot PARALELO +
+                  apuntando + RECOGIDO. grasp_object(...method=) despacha:
+                  * "lateral" (default): agarre DE LADO INCLINADO (ver seccion 5). Pasos:
+                    sube sobre el mostrador -> centra A-LO-LARGO moviendo la BASE
+                    (move_by base_translate) sobre el EJE DE CIERRE real -> extiende alto
+                    sobre el cubo -> INCLINA la muneca (PITCH_LAT=-0.6) -> baja el centro de
+                    agarre AL cuerpo del cubo (con SOBREPASO radial) -> CIERRA firme + sube.
+                  * "top" (desde arriba): muneca abajo; centro de agarre sobre el objeto,
+                    extiende arm_out alto, baja, cierra.
+                  Helpers CLAVE: _grasp_center_true (link_grasp_center del sim = FK exacta;
+                  reintenta si llega stale), _closing_axis_offset (offset del objeto sobre
+                  el eje entre rubber_tip_left/right), _close_and_lift, _grasp_center
+                  (aprox por constantes, fallback). Constantes: PITCH_LAT, HIGH_CLEAR,
+                  RAD_DONE/RAD_OVERSHOOT, LIFT_BIAS_LAT.
+fase2.py        : entry AGARRE. "uv run Pablo/fase2.py cubo_rojo [top] [ver]" (default lateral).
 fase1b.py       : entry Fase 1b (localiza por camara + altura segura + wrist).
 posicionar.py   : entry posicionamiento.
 _test_nav.py    : prueba aislada de nav_to_parallel (imprime lateral/along, sin choque).
 _diag_base.py   : diagnostico de velocidad de la base.
 _diag_gripper.py: imprime el offset camara d405 -> link_grasp_center (calibracion).
+_diag_canclose.py: PRUEBA DECISIVA -- teletransporta el cubo al centro de agarre y cierra
+                  (verifica que el gripper PUEDE sujetar el cubo de 5cm).
+_diag_gripper_span.py: mide la separacion de las puntas (rubber_tip) abierto/cerrado.
+_diag_basetrans.py: caracteriza la precision de move_by(base_translate) (~1mm en <=5cm).
+_diag_close.py / _diag_descend.py: diagnostico del cierre / del descenso (verdad del sim).
+_record_grasp.py: graba el agarre a mp4 (nav+cabeza+muneca). Salida snaps/agarre_lateral.mp4.
+_batch_grasp.sh : corre varios (objeto,spawn) y resume AGARRE OK / REVISAR.
 
 Cambios FUERA de Pablo/ (sim/toolkit, portables):
   stretch_mujoco/stretch_mujoco_simulator.py : move_to_many()/move_by_many() (fix multi-junta).
-  stretch_mujoco/mujoco_server.py            : pull_status expone camera_poses (cams) Y AHORA
-                                               link_grasp_center / link_gripper_finger_* (pose-mundo).
+  stretch_mujoco/mujoco_server.py            : pull_status expone camera_poses (cams) +
+                                               link_grasp_center / link_gripper_finger_* Y AHORA
+                                               rubber_tip_left/right (puntas reales, para el
+                                               centrado del eje de cierre).
+  stretch_mujoco/models/stretch.xml          : *** ESTA SESION *** finger_slide range/ctrlrange
+                                               -0.02 -> -0.06 (cierre FIRME; antes el cubo se
+                                               resbalaba). Es el XML que el sim CARGA (no el
+                                               stretch_mj_3.3.0.xml).
   stretch_mujoco/datamodels/status_stretch_joints.py : + camera_poses.
   stretch_toolkit/sim.py        : _set_joint_velocities en batch (move_by_many).
   stretch_toolkit/__init__.py   : NO aplicar start_translation en RoboCasa.
   stretch_toolkit/sim_config.json      : "detector":"oracle"; robocasa.enabled=true.
   stretch_toolkit/sim_joint_config.json: base_forward speed 0.35 / accel 1.2;
                                          base_counterclockwise speed 1.8 / accel 3.5.
+  Pablo/sim_setup.py            : *** ESTA SESION *** STRETCH_FIXED_SPAWN para spawn fijo
+                                  reproducible (quat en orden w,x,y,z!).
 
 --------------------------------------------------------------------------------
 5) ESTADO: HECHO/VERIFICADO  vs  LIMITACION/PENDIENTE
@@ -164,30 +204,43 @@ HECHO Y VERIFICADO:
   [x] NAV gira-primero: nav_to_parallel ya NO avanza mientras gira (si |herr|>11deg gira
       en el lugar); antes el avance empujaba contra el mostrador y la base se congelaba.
 
-DONDE ME QUEDE (lo unico que falta para cerrar el agarre lateral):
-  [!] El CIERRE no atrapa el cubo: la geometria queda PERFECTA (cubo entre los dedos,
-      radial -0.01, dz -0.004, a-lo-largo 0.02-0.06, ex centrado por wrist_yaw) pero al
-      cerrar el cubo NO se mueve nada (objeto z 0.94->0.94) -> los dedos cierran SIN
-      tocar el cubo. Falta entender por que: revisar la captura Pablo/snaps/f2_post_wrist
-      (en la ultima corrida el gripper miraba a la pared, el cubo no se ve claramente
-      entre los dedos). Hipotesis a checar:
-        - el plano de cierre real de los dedos no coincide con link_grasp_center (offset
-          z o radial del PUNTO DE CIERRE distinto del centro calibrado);
-        - el objeto sobresale poco y el centro de agarre (a obj_z) deja los dedos un poco
-          altos/bajos respecto a la parte agarrable;
-        - el cubo es pequeno y el residuo a-lo-largo (2-6 cm) lo deja al borde de la
-          abertura -> empujar wrist_yaw mas / cerrar mas / verificar el span real abierto.
-      SIGUIENTE PASO CONCRETO: capturar wrist+depth justo ANTES de cerrar y medir donde
-      caen los dedos vs el cubo (en pixeles y en profundidad); ajustar el offset de cierre
-      (z y/o radial) o el span de apertura. Probar tambien con cubo_rojo en modo 'ver'.
+RESUELTO ESTA SESION (el CIERRE ya atrapa el cubo):
+  [x] PRUEBA DECISIVA (_diag_canclose.py): teletransportando el cubo al centro de agarre y
+      cerrando, el gripper SI lo sujeta y lo levanta -> el gripper SIRVE; el problema era
+      100% de POSICIONAMIENTO, no del cierre.
+  [x] DIAGNOSTICO de por que fallaba el lateral horizontal (verdad del sim, rubber_tip):
+        - Sin inclinar, el brazo se ATORA con las puntas ~1.5cm por ENCIMA de la tapa del
+          cubo (choca con el mostrador al bajar) -> los dedos cerraban en el aire.
+        - La cinematica calibrada (constantes) erraba ~2cm en z -> el centro de agarre real
+          quedaba mas alto de lo creido.
+        - El residuo A-LO-LARGO (3-5cm) dejaba el cubo descentrado -> un dedo lo empujaba.
+  [x] FIX 1 (alcance): agarre lateral INCLINADO. Secuencia (grasp_lib._grasp_lateral):
+      sube sobre el mostrador -> centra a-lo-largo (base) -> extiende alto sobre el cubo ->
+      INCLINA la muneca (-0.6) -> baja el centro de agarre AL cubo -> cierra + levanta.
+  [x] FIX 2 (exactitud): centro de agarre por CINEMATICA DIRECTA (link_grasp_center del sim,
+      _grasp_center_true), no por constantes. Vale con cualquier inclinacion.
+  [x] FIX 3 (a-lo-largo): centrado por move_by(base_translate) sobre el EJE DE CIERRE real
+      (entre rubber_tip_left/right). ~1mm de precision en pasos <=5cm. (wrist_yaw NO traslada
+      el centro de agarre -> sondeo dio ganancia ~0; la base es el unico DOF a-lo-largo.)
+      OJO: los pulsos de VELOCIDAD de la base sobrepasan metros -> usar move_by, no pulsos.
+  [x] FIX 4 (cierre firme): stretch.xml finger_slide -0.02 -> -0.06. El cubo queda DENTRO de
+      los dedos (radial overshoot ~-0.01) para que no se escape al levantar.
+  [x] SPAWN reproducible: STRETCH_FIXED_SPAWN="x,y,deg" (RoboCasa randomiza el spawn cada
+      corrida -> agarre no testeable). OJO: el quat va en orden (w,x,y,z); con el orden malo
+      el robot aparece volteado y la FISICA EXPLOTA (vi z=-5718).
+  [x] VIDEO de la prueba: Pablo/_record_grasp.py -> Pablo/snaps/agarre_lateral.mp4
+      (3 vistas: nav + cabeza + muneca).
 
 PENDIENTE:
-  [ ] Cerrar el agarre lateral (ver "DONDE ME QUEDE").
-  [ ] Fase 3: llevar a la estufa + abrir cajones (hay 5 joints "slide" = cajones en
-      layout 0). Subir brazo antes de rotar; anti-colision LiDAR.
+  [ ] Confiabilidad: el agarre funciona pero es algo MARGINAL por la varianza de la base del
+      sim (a veces el a-lo-largo / contacto queda al limite). Mejoras: centrado de base mas
+      fino / re-medir el eje de cierre tras inclinar / cerrar antes de levantar. (En hardware
+      real la base suele ser mas precisa.)
+  [ ] Fase 3: llevar a la estufa + abrir cajones (5 joints "slide" = cajones en layout 0).
+      Subir brazo antes de rotar; anti-colision LiDAR.
   [ ] (Opcional) YOLO real ("detector":"yolo") + auto-etiquetado con el oraculo.
-  Nota: el metodo "top" (desde arriba) sigue disponible (fase2.py huevo top) pero el
-  usuario pidio EXPLICITAMENTE el lateral "entrar recto", que es el default.
+  [ ] El huevo a veces aparece en el piso (z~0.21) -> revisar su colocacion/estabilidad.
+  Nota: el metodo "top" (desde arriba) sigue disponible (fase2.py huevo top).
 
 --------------------------------------------------------------------------------
 6) HALLAZGOS TECNICOS CLAVE
@@ -213,21 +266,29 @@ PENDIENTE:
 - Geometria layout0: mostrador en x; objetos y~-0.35; pasillo y mas baja; estufa x>2.8.
 
 --------------------------------------------------------------------------------
-7) COMO CORRER (desde C:\dev\StretchPAPO, PowerShell nueva con uv en PATH)
+7) COMO CORRER
 --------------------------------------------------------------------------------
-  uv run Pablo/fase1.py huevo [ver]        # Fase 1a: cabeza busca/centra
-  uv run Pablo/_test_nav.py huevo          # prueba el acercamiento PARALELO (sin choque)
-  uv run Pablo/fase2.py huevo [ver]        # AGARRE metodo LATERAL (default)
-  uv run Pablo/fase2.py huevo top [ver]    # AGARRE metodo DESDE ARRIBA
+ESTA SESION fue en UBUNTU por SSH, HEADLESS (sin pantalla) con render EGL:
+  ruta: ~/Documents/Ubuntus/STRECH2/stretch_mujoco_digital_twin  (venv local .venv)
+  env : MUJOCO_GL=egl  (Linux headless; en Windows NO usar egl)
+  spawn fijo (reproducible): STRETCH_FIXED_SPAWN="2.25,-0.8,90"  (x,y,grados)
+  ej:  STRETCH_FIXED_SPAWN="2.25,-0.8,90" MUJOCO_GL=egl .venv/bin/python Pablo/fase2.py cubo_rojo
+  video: ...python Pablo/_record_grasp.py cubo_rojo   -> Pablo/snaps/agarre_lateral.mp4
+
+En Windows (como antes), desde C:\dev\StretchPAPO con uv en PATH:
+  uv run Pablo/fase2.py cubo_rojo [top] [ver]
+  uv run Pablo/fase1.py huevo [ver]   /   uv run Pablo/_test_nav.py huevo
   objetos: huevo, tomate, cubo_rojo, cuchillo, plato
-Snapshots en Pablo/snaps/. 'ver' = ventana del visor (queda abierta al final).
+Snapshots en Pablo/snaps/. 'ver' = ventana del visor (solo con pantalla).
 
 --------------------------------------------------------------------------------
 8) PROXIMO PASO SUGERIDO
 --------------------------------------------------------------------------------
-1) Confiabilizar el eje A-LO-LARGO del mostrador (lo unico que falta para agarre 100%):
-   servo de base por odometria/pulsos calibrados RECOGIDO+ALTO con re-face, o reducir la
-   varianza de face_arm. (En hardware real / WSL la base suele ser mas precisa.)
-2) Con el agarre confiable, Fase 3: llevar el objeto a la estufa (x>2.8) sin chocar
-   (subir brazo antes de rotar, freno LiDAR) y abrir cajones (joints slide del layout 0).
+1) SUBIR la CONFIABILIDAD del agarre (ya funciona, pero marginal): re-medir el eje de
+   cierre (rubber_tip) DESPUES de inclinar y dar un ultimo ajuste de base; y/o cerrar el
+   gripper ANTES de que el brazo termine el descenso. Probar tomate/huevo (objetos con
+   malla, no caja) — la geometria de cierre puede necesitar otro PITCH_LAT/overshoot.
+2) Fase 3: llevar el objeto a la estufa (x>2.8) sin chocar (subir brazo antes de rotar,
+   freno LiDAR) y abrir cajones (joints slide del layout 0).
+3) Revisar por que el huevo aparece a veces en el piso (z~0.21).
 ================================================================================
