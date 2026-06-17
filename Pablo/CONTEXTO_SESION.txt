@@ -27,11 +27,16 @@
      FIRMES. Resultado: agarre CONFIABLE (cubo y HUEVO, 4/4 a la primera en pruebas).
    - El HUEVO tambien se agarra (mismo pipeline). Spawn recomendado: "2.45,-0.95,90".
    - FASE 3 (mover el objeto a otra zona, p.ej. cerca del FREGADERO): fase3.py. Agarra ->
-     recoge el brazo SIN rotar la muneca -> traslada por el mostrador (manejo recto de la base)
-     -> coloca (place_object_lateral). El AGARRE + COLOCAR funcionan; el TRASLADO es el punto
-     debil: la base del sim es ENTRECORTADA (stick-slip por friccion) y a veces ZAFA el cubo
-     del gripper a media navegacion (salio COLOCADO OK 1 vez, pero no es confiable). PENDIENTE:
-     traslado mas suave (tune de accel de la base / mover el cubo bajo y pegado a la base).
+     recoge el brazo SIN rotar la muneca -> traslada por el mostrador -> coloca.
+     *** En la branch Pablo_v2 el TRASLADO YA FUNCIONA *** (en Pablo era el punto debil: el
+     cubo se caia a media navegacion). Lo que lo arreglo (Pablo_v2):
+       1) stretch.xml: frictionloss de las ruedas 35 -> 2 (la base era entrecortada/stick-slip).
+       2) fase3.py: el traslado RAMPEA la velocidad de la base (acelera/frena gradual) -> sin
+          latigazo del mastil que aventaba el cubo. Y sin face_arm tras el traslado.
+       3) grasp_lib.py: GRIP_LOWER (agarra ~0.6cm mas al centro del cuerpo, mas estable).
+     Resultado: cubo agarrado -> llevado por el mostrador -> COLOCADO sobre el mostrador cerca
+     del fregadero (z=0.94). Huevo: agarra. Video: Pablo/demos/fase3_fregadero_v2.mp4.
+     (Pablo queda intacta como base del equipo; lo nuevo va en Pablo_v2.)
  Videos: Pablo/demos/agarre_cubo.mp4 y agarre_huevo.mp4 (agarres firmes, limpios) +
  agarre_lateral.mp4 (agarre) + fase3_fregadero.mp4 (intento de llevar al fregadero).
  Grabador: Pablo/_record_grasp.py / Pablo/fase3.py.
