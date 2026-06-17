@@ -24,7 +24,7 @@ def main():
     from sim_setup import start_kitchen
     from detection import OracleDetector, resolve_name
     from control import PosServo
-    from grasp_lib import position_for_grasp, grasp_object
+    from grasp_lib import grasp_with_retries
     from stretch_mujoco.enums.stretch_cameras import StretchCameras
 
     log = lambda m: print(m, flush=True)
@@ -77,14 +77,10 @@ def main():
     time.sleep(0.5)
 
     log(f"[rec] objetivo='{target}'")
-    state["phase"] = "Fase 1 / 1.5: localizar por camara + acercarse en paralelo"
-    obj, ok = position_for_grasp(controller, sim, det, model, servo, body,
-                                 HEAD, HEAD_D, WRIST, method="lateral", log=log)
-    state["phase"] = "Fase 2: agarre lateral (sube, centra, inclina, baja, cierra)"
-    res = False
-    if ok:
-        res = grasp_object(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj,
-                           method="lateral", log=log)
+    state["phase"] = "Localizar por camara + agarre lateral (verifica firmeza, reintenta)"
+    obj, res = grasp_with_retries(controller, sim, det, model, servo, body,
+                                  HEAD, HEAD_D, WRIST, WRIST_D, method="lateral",
+                                  retries=3, log=log)
     state["phase"] = "AGARRADO OK" if res else "REVISAR"
     time.sleep(1.5)
     state["rec"] = False; th.join(timeout=3)

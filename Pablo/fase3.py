@@ -102,44 +102,32 @@ def main():
         servo.move_to({"arm_out": 0.0})
         _wait_joint(controller, "arm_out", 0.0, tol=0.03, timeout=4, servo=servo)
 
-        # ---- TRASLADAR a lo largo del mostrador con base_translate (PRECISO y SUAVE). El
-        #      nav reactivo (con esquive) sacudia la base y zafaba el cubo. El robot esta
-        #      PARALELO, asi que base_translate corre A-LO-LARGO del mostrador. ----
-        from stretch_mujoco.enums.actuators import Actuators
-        state["phase"] = "trasladar (base) cerca del fregadero"
-        log(f"[fase3] trasladando a lo largo del mostrador hacia x={place_x:.2f}...")
-
-        def _bx():
-            return controller.get_state()["base_x"]
-
-        def _wait_base():
-            prev = None; t0 = time.time()
-            while time.time() - t0 < 6:
-                time.sleep(0.15); servo.hold()
-                b = _bx()
-                if prev is not None and abs(b - prev) < 0.0015:
-                    break
-                prev = b
-
-        # base_translate(+m) avanza segun el heading -> base_x cambia m*cos(theta). Para
-        # cambiar base_x en dx hay que mover m = dx/cos(theta). Uso el HEADING (no un sondeo:
-        # el primer move suele ser parcial y daba el signo equivocado -> iba al lado contrario).
-        for _ in range(16):
-            bx = _bx()
-            dx = place_x - bx
-            log(f"[fase3]   traslado: base_x={bx:.3f} (objetivo {place_x:.2f})")
-            if abs(dx) < 0.03:
+        # ---- TRASLADAR a lo largo del mostrador con un manejo RECTO y SUAVE de la base
+        #      (una sola aceleracion/frenado, con el brazo SOSTENIDO). base_translate iba a
+        #      PASOS (varios arranques/frenones) y zafaba el cubo; el nav reactivo (esquive)
+        #      tambien. El robot esta PARALELO -> base_forward corre A-LO-LARGO del mostrador.
+        from positioning import stop_base
+        state["phase"] = "trasladar (suave) cerca del fregadero"
+        log(f"[fase3] trasladando (suave) a lo largo del mostrador hacia x={place_x:.2f}...")
+        DT = 1.0 / 30
+        t0 = time.time(); last = 0.0
+        while time.time() - t0 < 16:
+            s = controller.get_state()
+            bx = s["base_x"]; dx = place_x - bx
+            if abs(dx) < 0.04:
                 break
-            c = float(np.cos(controller.get_state()["base_theta"]))
-            if abs(c) < 0.3:                        # heading casi perpendicular -> no fiable
-                c = 1.0 if c >= 0 else -1.0
-            step = float(np.clip(dx / c, -0.06, 0.06))
-            if abs(step) < 0.01:
-                break
-            sim.move_by(Actuators.base_translate, step); _wait_base(); servo.sync()
-        controller.stop(); time.sleep(0.3); servo.sync()
-        face_arm_at_object(controller, (place_x, place_y), log=log,
-                           sim=sim, servo=servo, obj_z=place_z)
+            c = float(np.cos(s["base_theta"]))      # base_forward+ mueve base_x en +cos(th)
+            sgn = 1.0 if (dx * c) >= 0 else -1.0     # signo de base_forward para acercarse
+            controller.set_velocities({"base_forward": sgn * 0.45, "base_counterclockwise": 0.0})
+            servo.hold()                            # mantiene brazo+gripper (cubo sujeto)
+            if time.time() - last > 1.0:
+                log(f"[fase3]   traslado: base_x={bx:.3f} (objetivo {place_x:.2f})")
+                last = time.time()
+            time.sleep(DT)
+        stop_base(controller); servo.sync()
+        # NO re-orientar con face_arm aqui: rotar la base EN SITIO con el cubo sostenido lo
+        # AVIENTA (fuerza centripeta en el gripper extendido). Tras el manejo RECTO el robot
+        # sigue PARALELO al mostrador, asi que ya apunta al punto de colocacion.
 
         # ---- COLOCAR ----
         state["phase"] = "colocar el objeto"

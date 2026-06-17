@@ -22,12 +22,19 @@
      en positioning.py; turn_to acepta on_turn; face_arm lo usa con sim/servo).
    - REINTENTOS de agarre: grasp_with_retries (abre, recoge, re-localiza y reintenta si
      falla). El cierre del cubo es ~50% por intento (limite del sim); 3 reintentos ~90%.
+   - VERIFICACION de agarre FIRME (FIRM_TOL en grasp_lib): antes de cerrar comprueba que el
+     objeto quedo CENTRADO entre las puntas; si no, suelta y reintenta -> solo cierra agarres
+     FIRMES. Resultado: agarre CONFIABLE (cubo y HUEVO, 4/4 a la primera en pruebas).
+   - El HUEVO tambien se agarra (mismo pipeline). Spawn recomendado: "2.45,-0.95,90".
    - FASE 3 (mover el objeto a otra zona, p.ej. cerca del FREGADERO): fase3.py. Agarra ->
-     recoge el brazo SIN rotar la muneca (si no, el cubo se zafa) -> traslada por el mostrador
-     con base_translate (preciso; el nav reactivo zafaba el cubo) -> coloca (place_object_lateral).
-     VERIFICADO: COLOCADO OK (cubo de x~2.5 a ~2.13 cerca del fregadero, z=0.94 sobre el mostrador).
- Videos: Pablo/demos/agarre_lateral.mp4 (agarre) y Pablo/demos/fase3_fregadero.mp4 (llevar
- al fregadero). Grabador: Pablo/_record_grasp.py / Pablo/fase3.py.
+     recoge el brazo SIN rotar la muneca -> traslada por el mostrador (manejo recto de la base)
+     -> coloca (place_object_lateral). El AGARRE + COLOCAR funcionan; el TRASLADO es el punto
+     debil: la base del sim es ENTRECORTADA (stick-slip por friccion) y a veces ZAFA el cubo
+     del gripper a media navegacion (salio COLOCADO OK 1 vez, pero no es confiable). PENDIENTE:
+     traslado mas suave (tune de accel de la base / mover el cubo bajo y pegado a la base).
+ Videos: Pablo/demos/agarre_cubo.mp4 y agarre_huevo.mp4 (agarres firmes, limpios) +
+ agarre_lateral.mp4 (agarre) + fase3_fregadero.mp4 (intento de llevar al fregadero).
+ Grabador: Pablo/_record_grasp.py / Pablo/fase3.py.
 ================================================================================
 
 --------------------------------------------------------------------------------

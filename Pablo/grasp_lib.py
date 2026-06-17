@@ -38,6 +38,10 @@ APPROACH_OVERSHOOT = 0.015     # (lateral) pasar el centro de agarre apenas detr
 # queda alta y libra el mostrador. Sigue siendo un agarre DE LADO (los dedos aprietan los
 # costados), solo que entrando un poco inclinado, no recto-horizontal.
 PITCH_LAT = 0.6
+# Tolerancia de FIRMEZA: si el objeto, justo antes de cerrar, esta a mas de esto del centro
+# del eje de cierre (entre las puntas), el agarre saldria DEBIL (de orilla) y se soltaria al
+# mover la base. _grasp_lateral aborta (reintento) si se supera. ~0.7cm.
+FIRM_TOL = 0.007
 
 
 def _wait_joint(controller, key, target, tol=0.03, timeout=5.0, servo=None):
@@ -429,6 +433,23 @@ def _grasp_lateral(controller, sim, det, model, servo, body, WRIST, WRIST_D, obj
 
     gc, d_rad, d_al, dz = errs()
     log(f"[gL] pre-cierre: radial={d_rad:+.3f} a-lo-largo={d_al:+.3f} dz={dz:+.3f}")
+
+    # 6.5) VERIFICAR que el agarre quedara FIRME: el objeto debe estar CENTRADO entre las
+    #      puntas (eje de cierre). Si quedo descentrado (>FIRM_TOL) el cierre lo agarraria por
+    #      una orilla -> aguanta el levanton pero se SUELTA al mover la base. Mejor avisar
+    #      (return False) para que grasp_with_retries suelte y reintente -> solo cargamos
+    #      agarres firmes. (Verificacion por posiciones del sim; el control es por camara/FK.)
+    try:
+        cube_now = np.array(sim.pull_status().object_poses[body][:3])
+        off, ok = _closing_axis_offset(sim, cube_now,
+                                       np.array(_base_pose(controller)[:2]))
+        if ok and abs(off) > FIRM_TOL:
+            log(f"[gL] agarre quedaria DEBIL (offset eje de cierre {off*100:+.1f}cm > "
+                f"{FIRM_TOL*100:.1f}cm) -> reintento")
+            return False
+        log(f"[gL] agarre centrado (offset eje de cierre {off*100:+.1f}cm) -> cierro")
+    except Exception as e:
+        log(f"[gL] (no pude verificar firmeza: {e})")
 
     # 7) CERRAR firme y LEVANTAR (el objeto esta entre los dedos a esta pose)
     return _close_and_lift(controller, sim, servo, body, log)
